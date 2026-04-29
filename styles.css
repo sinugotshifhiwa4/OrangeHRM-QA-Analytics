@@ -136,6 +136,7 @@ a { color: var(--accent); text-decoration: none; }
   top: 0;
   z-index: 50;
   backdrop-filter: blur(8px);
+  overflow: visible; /* allow dropdowns to spill below */
 }
 .header-title {
   font-size: 13px; font-weight: 600;
@@ -228,7 +229,7 @@ a { color: var(--accent); text-decoration: none; }
   border: 1px solid var(--border-md);
   border-radius: var(--r);
   padding: 4px;
-  z-index: 200;
+  z-index: 500;  /* well above sticky header z-index:50 */
   box-shadow: 0 8px 24px #00000060;
   animation: dropIn .12s ease;
 }
@@ -797,44 +798,77 @@ td.mono { font-family: var(--mono); font-size: 10.5px; }
 
   /* ── All Runs: card layout instead of wide table ── */
   .table-wrap { overflow-x: visible; }
-  #runs-table thead { display: none; } /* hide column headers */
+  #runs-table thead { display: none; }
   #runs-table,
   #runs-table tbody { display: block; width: 100%; }
+  /* each row = a card */
   #runs-table tbody tr {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto auto auto;
     padding: 10px 12px;
     border-radius: var(--r);
     border: 1px solid var(--border);
     margin-bottom: 6px;
     background: var(--bg-2);
     position: relative;
+    gap: 0;
   }
   #runs-table tbody tr:hover { background: var(--bg-3); }
-  /* hide compare checkbox and links on mobile */
-  #runs-table td:first-child,
-  #runs-table td.col-hide { display: none; }
-  /* all visible cells become inline labeled items */
-  #runs-table td { padding: 2px 0; white-space: normal; font-size: 11px; }
-  /* run number — big */
+
+  /* hide ALL td by default, then selectively show */
+  #runs-table td { display: none; padding: 0; white-space: normal; }
+
+  /* Run # — col 2, spans left column, row 1 */
   #runs-table td:nth-child(2) {
-    font-size: 12px; font-weight: 600;
+    display: block;
+    grid-column: 1; grid-row: 1;
+    font-size: 13px; font-weight: 700;
     color: var(--text-1); font-family: var(--mono);
-    margin-bottom: 4px;
+    padding-bottom: 2px;
   }
-  /* branch */
-  #runs-table td:nth-child(4) {
-    color: var(--text-2); font-size: 11px; font-family: var(--mono);
-    margin-bottom: 2px;
-  }
-  /* pass rate bar */
-  #runs-table td:nth-child(8) { margin: 4px 0; }
-  /* fails */
-  #runs-table td:nth-child(9) { font-family: var(--mono); }
-  /* status badge — absolute top-right */
+  /* Status badge — col 2 right column, row 1 */
   #runs-table td:nth-child(12) {
-    position: absolute; top: 10px; right: 10px;
+    display: block;
+    grid-column: 2; grid-row: 1;
+    align-self: start;
   }
+  /* Date — col 3 (formattedDate) */
+  #runs-table td:nth-child(3) {
+    display: block;
+    grid-column: 1 / -1; grid-row: 2;
+    font-size: 10px; color: var(--text-3);
+    font-family: var(--mono); padding-bottom: 4px;
+  }
+  /* Branch — col 4 */
+  #runs-table td:nth-child(4) {
+    display: block;
+    grid-column: 1; grid-row: 3;
+    font-size: 11px; color: var(--text-2);
+    font-family: var(--mono); padding-bottom: 3px;
+  }
+  /* Pass rate bar — col 8 */
+  #runs-table td:nth-child(8) {
+    display: block;
+    grid-column: 1; grid-row: 4;
+    padding-top: 4px;
+  }
+  /* Fails — col 9, right side row 4 */
+  #runs-table td:nth-child(9) {
+    display: block;
+    grid-column: 2; grid-row: 4;
+    font-family: var(--mono); font-size: 11px;
+    align-self: end; padding-top: 4px;
+    text-align: right;
+  }
+  /* hide everything else explicitly */
+  #runs-table td:nth-child(1),
+  #runs-table td:nth-child(5),
+  #runs-table td:nth-child(6),
+  #runs-table td:nth-child(7),
+  #runs-table td:nth-child(10),
+  #runs-table td:nth-child(11),
+  #runs-table td:nth-child(13) { display: none !important; }
 
   /* ── Table toolbar ── */
   .table-toolbar { flex-direction: column; align-items: flex-start; gap: 8px; }
