@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OrangeHRM | Test Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="layout">
+
+<!-- ══ SIDEBAR ══ -->
+<aside class="sidebar">
+  <div class="sb-logo">
+    <div class="sb-logo-icon">Q</div>
+    <div>
+      <div class="sb-logo-text">QA Analytics</div>
+      <div class="sb-logo-sub">OrangeHRM</div>
+    </div>
+  </div>
+  <div class="sb-section">
+    <div class="sb-section-label">Dashboards</div>
+    <div class="nav-item active" data-page="overview">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+      Overview
+    </div>
+    <div class="nav-item" data-page="trends">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="1,12 5,7 9,9 15,3"/></svg>
+      Trends
+    </div>
+    <div class="nav-item" data-page="breakdown">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="8" width="3" height="7" rx="1"/><rect x="6" y="5" width="3" height="10" rx="1"/><rect x="11" y="2" width="3" height="13" rx="1"/></svg>
+      Breakdown
+    </div>
+    <div class="nav-item" data-page="runs">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="14" y2="8"/><line x1="2" y1="12" x2="10" y2="12"/></svg>
+      All Runs
+    </div>
+  </div>
+  <div class="sb-footer">
+    <div style="display:flex;align-items:center;margin-bottom:3px">
+      <span class="live-dot"></span>Live
+    </div>
+    <div id="countdown" style="color:var(--text-3)">Refresh in 60s</div>
+  </div>
+</aside>
+
+<!-- ══ MAIN ══ -->
+<div class="main">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-title">Test <span>Analytics</span></div>
+
+    <!-- ── New filter bar ── -->
+    <div class="filters" id="header-filters">
+
+      <!-- Date range pills -->
+      <div class="date-group" id="date-group">
+        <button class="date-pill" data-days="7">7d</button>
+        <button class="date-pill" data-days="30">30d</button>
+        <button class="date-pill" data-days="90">90d</button>
+        <button class="date-pill active" data-days="0">All</button>
+      </div>
+
+      <!-- Status dropdown -->
+      <div class="dropdown-wrap" id="dd-status">
+        <button class="dropdown-trigger" onclick="DropdownModule.toggle('dd-status')">
+          <span class="dd-label" id="dd-status-label">Filter Status</span>
+          <svg class="dd-caret" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+        </button>
+        <div class="dropdown-panel" id="dd-status-panel">
+          <label class="dd-option"><input type="radio" name="filter-status" value="" checked /> All Statuses</label>
+          <label class="dd-option"><input type="radio" name="filter-status" value="PASS" /> <span class="dd-dot" style="background:var(--green)"></span>Passed</label>
+          <label class="dd-option"><input type="radio" name="filter-status" value="FAIL" /> <span class="dd-dot" style="background:var(--red)"></span>Failed</label>
+        </div>
+      </div>
+
+      <!-- Branch dropdown -->
+      <div class="dropdown-wrap" id="dd-branch">
+        <button class="dropdown-trigger" onclick="DropdownModule.toggle('dd-branch')">
+          <span class="dd-label" id="dd-branch-label">Filter Branch</span>
+          <svg class="dd-caret" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+        </button>
+        <div class="dropdown-panel" id="dd-branch-panel">
+          <!-- populated by JS -->
+        </div>
+      </div>
+
+      <!-- Environment dropdown -->
+      <div class="dropdown-wrap" id="dd-env">
+        <button class="dropdown-trigger" onclick="DropdownModule.toggle('dd-env')">
+          <span class="dd-label" id="dd-env-label">Filter Env</span>
+          <svg class="dd-caret" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+        </button>
+        <div class="dropdown-panel" id="dd-env-panel">
+          <!-- populated by JS -->
+        </div>
+      </div>
+
+      <!-- Test Tags multi-select dropdown (was "Types") -->
+      <div class="dropdown-wrap" id="dd-tags">
+        <button class="dropdown-trigger" onclick="DropdownModule.toggle('dd-tags')">
+          <span class="dd-label" id="dd-tags-label">Filter Tags</span>
+          <svg class="dd-caret" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+        </button>
+        <div class="dropdown-panel" id="dd-tags-panel">
+          <!-- populated by JS with checkboxes for multi-select -->
+        </div>
+      </div>
+
+      <!-- User dropdown -->
+      <div class="dropdown-wrap" id="dd-user">
+        <button class="dropdown-trigger" onclick="DropdownModule.toggle('dd-user')">
+          <span class="dd-label" id="dd-user-label">Filter User</span>
+          <svg class="dd-caret" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+        </button>
+        <div class="dropdown-panel" id="dd-user-panel">
+          <!-- populated by JS -->
+        </div>
+      </div>
+
+      <!-- Search -->
+      <input type="text" class="header-search" id="header-search" placeholder="Search test, suite, or file…" />
+
+      <!-- Pass threshold -->
+      <div class="threshold-chip">
+        Pass ≥ <input type="range" id="pass-threshold" min="80" max="100" step="1" value="100"/>
+        <span class="threshold-val" id="threshold-val">100%</span>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <span class="last-updated" id="last-updated">—</span>
+      <button class="btn" onclick="App.exportCSV()">↓ CSV</button>
+      <button class="btn btn-primary btn-icon" onclick="App.refresh()" title="Refresh">↺</button>
+    </div>
+  </header>
+
+  <!-- Mock banner -->
+  <div id="mock-banner">
+    ⚠ DEMO MODE — Live fetch failed. Showing mock data. &nbsp;
+    <span id="mock-error-detail" style="color:var(--text-3)"></span>
+    <a href="https://developers.cloudflare.com/r2/buckets/cors/" target="_blank" style="margin-left:auto;color:var(--blue)">Fix CORS →</a>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading-state" class="state-overlay">
+    <div class="spinner"></div>
+    <div class="state-title">Loading test data…</div>
+  </div>
+
+  <!-- Error -->
+  <div id="error-state" class="state-overlay" style="display:none">
+    <div style="color:var(--red);font-family:var(--mono);font-size:11px;text-align:center;max-width:360px" id="error-message"></div>
+    <button class="btn btn-primary" onclick="App.refresh()">↺ Retry</button>
+  </div>
+
+  <!-- ── Overview ── -->
+  <div id="page-overview" class="page fade-in">
+    <div class="summary-row" id="summary-cards"></div>
+    <div class="charts-row">
+      <div class="chart-card">
+        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Pass Rate Trend</div></div>
+        <canvas id="chart-passrate"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Failures Over Time</div></div>
+        <canvas id="chart-failures"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Flaky Tests</div></div>
+        <canvas id="chart-flaky"></canvas>
+      </div>
+    </div>
+    <div class="failing-card">
+      <div class="failing-card-hd">
+        <div class="section-title"><span class="section-title-dot"></span>Top Failing Tests</div>
+        <span class="section-sub" id="top-failing-sub"></span>
+      </div>
+      <div id="top-failing-list"></div>
+    </div>
+    <div class="breakdown-row">
+      <div class="breakdown-card">
+        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>By Test Tag</div></div>
+        <div id="breakdown-type"></div>
+      </div>
+      <div class="breakdown-card">
+        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>By Branch</div></div>
+        <div id="breakdown-branch"></div>
+      </div>
+      <div class="breakdown-card">
+        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>By Environment</div></div>
+        <div id="breakdown-env"></div>
+      </div>
+      <div class="breakdown-card">
+        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>By User Role</div></div>
+        <div id="breakdown-user"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Trends ── -->
+  <div id="page-trends" class="page fade-in">
+    <div class="charts-full">
+      <div class="chart-card-full">
+        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Pass Rate Over Time</div></div>
+        <canvas id="chart-passrate-full" style="max-height:200px"></canvas>
+      </div>
+      <div class="chart-card-full">
+        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Duration Over Time (minutes)</div></div>
+        <canvas id="chart-duration" style="max-height:200px"></canvas>
+      </div>
+      <div class="chart-card-full">
+        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Total Failures Over Time</div></div>
+        <canvas id="chart-failures-full" style="max-height:200px"></canvas>
+      </div>
+      <div class="chart-card-full">
+        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Flaky Tests Over Time</div></div>
+        <canvas id="chart-flaky-full" style="max-height:200px"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Breakdown ── -->
+  <div id="page-breakdown" class="page fade-in">
+    <div class="breakdown-charts">
+      <div class="chart-card-full"><div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Avg Pass Rate by Test Tag</div></div><canvas id="chart-bar-type" style="max-height:200px"></canvas></div>
+      <div class="chart-card-full"><div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Avg Pass Rate by Branch</div></div><canvas id="chart-bar-branch" style="max-height:200px"></canvas></div>
+      <div class="chart-card-full"><div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Runs by Environment</div></div><canvas id="chart-bar-env" style="max-height:200px"></canvas></div>
+      <div class="chart-card-full"><div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Avg Pass Rate by User Role</div></div><canvas id="chart-bar-user" style="max-height:200px"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ── All Runs ── -->
+  <div id="page-runs" class="page fade-in">
+    <div class="table-card">
+      <div class="table-toolbar">
+        <div class="section-title"><span class="section-title-dot"></span>All Runs</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="text" class="table-search" id="table-search" placeholder="Search runs…" />
+          <span class="table-count" id="table-count"></span>
+          <button class="btn" onclick="App.exportCSV()">↓ CSV</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="runs-table">
+          <thead>
+            <tr>
+              <th style="width:32px"></th>
+              <th data-col="runNumber">Run #</th>
+              <th data-col="formattedDate" class="col-hide">Date</th>
+              <th data-col="branch">Branch</th>
+              <th data-col="testType" class="col-hide">Tag</th>
+              <th data-col="userRole" class="col-hide">User</th>
+              <th data-col="env" class="col-hide">Env</th>
+              <th data-col="passRate">Pass %</th>
+              <th data-col="failed">Fails</th>
+              <th data-col="flaky" class="col-hide">Flaky</th>
+              <th data-col="durationMin" class="col-hide">Duration</th>
+              <th data-col="status">Status</th>
+              <th class="col-hide">Links</th>
+            </tr>
+          </thead>
+          <tbody id="runs-tbody"></tbody>
+        </table>
+      </div>
+      <div class="cmp-bar hidden" id="compare-bar">
+        <span><span class="hl" id="cmp-count">0</span> selected</span>
+        <button class="btn btn-primary" id="compare-btn" onclick="CompareModule.open()">⇄ Compare</button>
+        <button class="btn" onclick="CompareModule.clear()">✕ Clear</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+</div><!-- /layout -->
+
+<!-- Compare Modal -->
+<div class="modal-back" id="compare-modal" onclick="if(event.target===this)CompareModule.close()">
+  <div class="modal">
+    <div class="modal-hd">
+      <div class="modal-title">Run Comparison</div>
+      <button class="modal-close" onclick="CompareModule.close()">✕</button>
+    </div>
+    <div class="modal-body" id="compare-modal-body"></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
