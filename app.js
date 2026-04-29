@@ -746,13 +746,151 @@ const TimerModule = {
   },
 };
 
-/* ─── App ─── */
+/* ─── Mobile Module ─── */
+const MobileModule = {
+  openSidebar() {
+    document.getElementById('sidebar').classList.add('open');
+    document.getElementById('sidebar-overlay').classList.add('visible');
+    document.body.style.overflow = 'hidden';
+  },
+  closeSidebar() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebar-overlay').classList.remove('visible');
+    document.body.style.overflow = '';
+  },
+  toggleFilterSheet() {
+    const sheet = document.getElementById('filter-sheet');
+    const overlay = document.getElementById('filter-sheet-overlay');
+    const isOpen = sheet.classList.contains('open');
+    if (isOpen) {
+      this.closeFilterSheet();
+    } else {
+      sheet.classList.add('open');
+      overlay.classList.add('visible');
+      document.body.style.overflow = 'hidden';
+    }
+  },
+  closeFilterSheet() {
+    document.getElementById('filter-sheet').classList.remove('open');
+    document.getElementById('filter-sheet-overlay').classList.remove('visible');
+    document.body.style.overflow = '';
+  },
+  clearFilters() {
+    State.filters = { branch: '', env: '', testTags: [], userRole: '', status: '' };
+    State.dateRangeDays = 0;
+    // Reset all radios/checkboxes in sheet
+    document.querySelectorAll('#filter-sheet input[type=radio][value=""]').forEach(r => r.checked = true);
+    document.querySelectorAll('#filter-sheet input[type=checkbox]').forEach(c => c.checked = false);
+    document.querySelectorAll('.date-pill').forEach(p => p.classList.toggle('active', p.dataset.days === '0'));
+    DropdownModule.updateTagsLabel();
+    App.updateUI();
+  },
+
+  /** Build filter sheet panels (called after data loads) */
+  populateSheet() {
+    const runs = State.allRuns;
+    this._buildSheetRadio('fs-branch-panel', Utils.unique(runs.map(r => r.branch)).sort(), 'branch', 'filter-status-branch');
+    this._buildSheetRadio('fs-env-panel', Utils.unique(runs.map(r => r.env)).sort(), 'env', 'filter-status-env');
+    this._buildSheetRadio('fs-user-panel', Utils.unique(runs.map(r => r.userRole)).sort(), 'userRole', 'filter-status-user');
+    this._buildSheetCheckbox('fs-tags-panel', Utils.unique(runs.map(r => r.testType)).sort());
+
+    // Status radios
+    document.querySelectorAll('input[name="filter-status-m"]').forEach(input => {
+      input.addEventListener('change', () => {
+        State.filters.status = input.value;
+        // sync desktop dropdown label
+        DropdownModule.updateSingleLabel('dd-status-label', 'Filter Status',
+          input.value ? (input.value === 'PASS' ? 'Passed' : 'Failed') : '');
+        App.updateUI();
+      });
+    });
+
+    // Mobile date pills
+    document.querySelectorAll('#date-group-mobile .date-pill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        State.dateRangeDays = Number(btn.dataset.days);
+        // sync both pill groups
+        document.querySelectorAll('.date-pill').forEach(p =>
+          p.classList.toggle('active', Number(p.dataset.days) === State.dateRangeDays)
+        );
+        App.updateUI();
+      });
+    });
+
+    // Mobile threshold
+    document.getElementById('pass-threshold-m')?.addEventListener('input', e => {
+      State.passThreshold = Number(e.target.value);
+      document.getElementById('threshold-val-m').textContent = `${State.passThreshold}%`;
+      // sync desktop slider
+      const desk = document.getElementById('pass-threshold');
+      if (desk) desk.value = State.passThreshold;
+      document.getElementById('threshold-val').textContent = `${State.passThreshold}%`;
+      App.updateUI();
+    });
+  },
+
+  _buildSheetRadio(panelId, values, filterKey, radioName) {
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+    panel.innerHTML = `<label class="dd-option"><input type="radio" name="${radioName}" value="" checked /> All</label>`
+      + values.filter(Boolean).map(v =>
+        `<label class="dd-option"><input type="radio" name="${radioName}" value="${Utils.escape(v)}" /> ${Utils.escape(v)}</label>`
+      ).join('');
+    panel.querySelectorAll(`input[name="${radioName}"]`).forEach(input => {
+      input.addEventListener('change', () => {
+        State.filters[filterKey] = input.value;
+        // sync desktop dropdown label
+        const labelMap = { branch: 'dd-branch-label', env: 'dd-env-label', userRole: 'dd-user-label' };
+        const allMap   = { branch: 'All Branches', env: 'All Envs', userRole: 'All Users' };
+        if (labelMap[filterKey]) DropdownModule.updateSingleLabel(labelMap[filterKey], allMap[filterKey], input.value);
+        App.updateUI();
+      });
+    });
+  },
+
+  _buildSheetCheckbox(panelId, values) {
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+    panel.innerHTML = values.filter(Boolean).map(v =>
+      `<label class="dd-option">
+        <input type="checkbox" name="filter-tag-m" value="${Utils.escape(v)}" ${State.filters.testTags.includes(v) ? 'checked' : ''} />
+        <span class="pill pill-purple" style="pointer-events:none">@${Utils.escape(v)}</span>
+      </label>`
+    ).join('');
+    panel.querySelectorAll('input[name="filter-tag-m"]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const checked = [...panel.querySelectorAll('input[name="filter-tag-m"]:checked')].map(c => c.value);
+        State.filters.testTags = checked;
+        DropdownModule.updateTagsLabel();
+        App.updateUI();
+      });
+    });
+  },
+};
+
+
 const App = {
   async init() {
-    // Nav
-    document.querySelectorAll('.nav-item').forEach(n =>
-      n.addEventListener('click', () => NavModule.show(n.dataset.page))
-    );
+    // Mobile bottom nav
+    document.querySelectorAll('.mbn-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        NavModule.show(btn.dataset.page);
+        // sync bottom nav active state
+        document.querySelectorAll('.mbn-item').forEach(b => b.classList.toggle('active', b === btn));
+        // also close sidebar if open
+        MobileModule.closeSidebar();
+      });
+    });
+
+    // Sidebar nav items also close the drawer on mobile
+    document.querySelectorAll('.nav-item').forEach(n => {
+      n.addEventListener('click', () => {
+        NavModule.show(n.dataset.page);
+        // sync bottom nav
+        document.querySelectorAll('.mbn-item').forEach(b => b.classList.toggle('active', b.dataset.page === n.dataset.page));
+        MobileModule.closeSidebar();
+      });
+    });
 
     // Close dropdowns on outside click
     document.addEventListener('click', e => DropdownModule.closeAll(e));
@@ -805,6 +943,7 @@ const App = {
       const raw = await DataModule.fetch();
       State.allRuns = DataModule.normalize(raw);
       DropdownModule.populate();
+      MobileModule.populateSheet();
       this.updateUI();
       document.getElementById('last-updated').textContent =
         (DataModule.usingMock ? '⚠ Mock · ' : '') + 'Updated ' + new Date().toLocaleTimeString('en-ZA');

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>OrangeHRM | Test Analytics</title>
+<title>OrangeHRM · Test Analytics</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -13,8 +13,11 @@
 <body>
 <div class="layout">
 
+<!-- ══ SIDEBAR OVERLAY (mobile) ══ -->
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="MobileModule.closeSidebar()"></div>
+
 <!-- ══ SIDEBAR ══ -->
-<aside class="sidebar">
+<aside class="sidebar" id="sidebar">
   <div class="sb-logo">
     <div class="sb-logo-icon">Q</div>
     <div>
@@ -54,6 +57,11 @@
 
   <!-- Header -->
   <header class="header">
+    <!-- Hamburger (mobile only) -->
+    <button class="hamburger" id="hamburger" onclick="MobileModule.openSidebar()" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+
     <div class="header-title">Test <span>Analytics</span></div>
 
     <!-- ── New filter bar ── -->
@@ -136,10 +144,80 @@
 
     <div class="header-right">
       <span class="last-updated" id="last-updated">—</span>
+      <!-- Filter icon (mobile) -->
+      <button class="btn btn-icon mobile-filter-btn" onclick="MobileModule.toggleFilterSheet()" title="Filters">⚙</button>
       <button class="btn" onclick="App.exportCSV()">↓ CSV</button>
       <button class="btn btn-primary btn-icon" onclick="App.refresh()" title="Refresh">↺</button>
     </div>
   </header>
+
+  <!-- ══ MOBILE FILTER SHEET ══ -->
+  <div class="filter-sheet-overlay" id="filter-sheet-overlay" onclick="MobileModule.closeFilterSheet()"></div>
+  <div class="filter-sheet" id="filter-sheet">
+    <div class="filter-sheet-hd">
+      <span style="font-weight:600;font-size:13px">Filters</span>
+      <button class="modal-close" onclick="MobileModule.closeFilterSheet()">✕</button>
+    </div>
+    <div class="filter-sheet-body">
+      <!-- Date range -->
+      <div class="fs-section-label">Date Range</div>
+      <div class="date-group" id="date-group-mobile" style="display:flex;width:100%">
+        <button class="date-pill" data-days="7" style="flex:1">7d</button>
+        <button class="date-pill" data-days="30" style="flex:1">30d</button>
+        <button class="date-pill" data-days="90" style="flex:1">90d</button>
+        <button class="date-pill active" data-days="0" style="flex:1">All</button>
+      </div>
+      <!-- Status -->
+      <div class="fs-section-label">Status</div>
+      <div id="fs-status-panel" class="fs-options">
+        <label class="dd-option"><input type="radio" name="filter-status-m" value="" checked /> All Statuses</label>
+        <label class="dd-option"><input type="radio" name="filter-status-m" value="PASS" /><span class="dd-dot" style="background:var(--green)"></span>Passed</label>
+        <label class="dd-option"><input type="radio" name="filter-status-m" value="FAIL" /><span class="dd-dot" style="background:var(--red)"></span>Failed</label>
+      </div>
+      <!-- Branch -->
+      <div class="fs-section-label">Branch</div>
+      <div id="fs-branch-panel" class="fs-options"></div>
+      <!-- Env -->
+      <div class="fs-section-label">Environment</div>
+      <div id="fs-env-panel" class="fs-options"></div>
+      <!-- Tags -->
+      <div class="fs-section-label">Test Tags</div>
+      <div id="fs-tags-panel" class="fs-options"></div>
+      <!-- User -->
+      <div class="fs-section-label">User Role</div>
+      <div id="fs-user-panel" class="fs-options"></div>
+      <!-- Pass threshold -->
+      <div class="fs-section-label">Pass Threshold</div>
+      <div class="threshold-chip" style="width:100%;justify-content:space-between">
+        Pass ≥ <input type="range" id="pass-threshold-m" min="80" max="100" step="1" value="100"/>
+        <span class="threshold-val" id="threshold-val-m">100%</span>
+      </div>
+    </div>
+    <div class="filter-sheet-footer">
+      <button class="btn" style="flex:1" onclick="MobileModule.clearFilters()">Clear All</button>
+      <button class="btn btn-primary" style="flex:1" onclick="MobileModule.closeFilterSheet()">Apply</button>
+    </div>
+  </div>
+
+  <!-- ══ MOBILE BOTTOM NAV ══ -->
+  <nav class="mobile-bottom-nav" id="mobile-bottom-nav">
+    <button class="mbn-item active" data-page="overview">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+      <span>Overview</span>
+    </button>
+    <button class="mbn-item" data-page="trends">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="1,12 5,7 9,9 15,3"/></svg>
+      <span>Trends</span>
+    </button>
+    <button class="mbn-item" data-page="breakdown">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="8" width="3" height="7" rx="1"/><rect x="6" y="5" width="3" height="10" rx="1"/><rect x="11" y="2" width="3" height="13" rx="1"/></svg>
+      <span>Breakdown</span>
+    </button>
+    <button class="mbn-item" data-page="runs">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="14" y2="8"/><line x1="2" y1="12" x2="10" y2="12"/></svg>
+      <span>Runs</span>
+    </button>
+  </nav>
 
   <!-- Mock banner -->
   <div id="mock-banner">
