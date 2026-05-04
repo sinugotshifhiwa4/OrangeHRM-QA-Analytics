@@ -562,10 +562,27 @@ const TopFailingModule = {
     if (hasPerTest) {
       const counts = {};
       runs.forEach(r => (r.failedTests || []).forEach(t => {
-        if (!counts[t.name]) counts[t.name] = { name: t.name, classname: t.classname, msg: t.failureMessage, count: 0 };
+        if (!counts[t.name]) {
+          counts[t.name] = {
+            name: t.name,
+            classname: t.classname,
+            msg: t.failureMessage,
+            count: 0,
+            latestDateMs: -1,
+            latestRunNumber: null,
+            latestReportUrl: null,
+          };
+        }
         counts[t.name].count++;
+        if ((r._dateMs || 0) >= counts[t.name].latestDateMs) {
+          counts[t.name].latestDateMs = r._dateMs || 0;
+          counts[t.name].latestRunNumber = r.buildNumber ?? r.runNumber ?? null;
+          counts[t.name].latestReportUrl = r.reportUrl || null;
+        }
       }));
-      const sorted = Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 8);
+      const sorted = Object.values(counts)
+        .sort((a, b) => (b.latestDateMs - a.latestDateMs) || (b.count - a.count))
+        .slice(0, 8);
       sub.textContent = `${sorted.length} distinct · ${runs.filter(r => r.failed > 0).length} failing runs`;
       list.innerHTML = sorted.length === 0
         ? `<div class="failing-empty">✓ No test failures in this window</div>`
@@ -575,6 +592,10 @@ const TopFailingModule = {
             <div class="failing-name" title="${Utils.escape(t.name)}">${Utils.escape(t.name)}</div>
             <div class="failing-file">${Utils.escape(t.classname || '')}</div>
             ${t.msg ? `<div class="failing-msg" title="${Utils.escape(t.msg)}">${Utils.escape(t.msg.split('\n')[0])}</div>` : ''}
+            ${(t.latestRunNumber != null || t.latestReportUrl) ? `<div class="failing-meta">
+              ${t.latestRunNumber != null ? `<span>Latest: #${Utils.escape(String(t.latestRunNumber))}</span>` : ''}
+              ${t.latestReportUrl ? `<a href="${Utils.escape(t.latestReportUrl)}" target="_blank" rel="noopener noreferrer" class="failing-meta-link">Report</a>` : ''}
+            </div>` : ''}
           </div>
           <div class="failing-badge">${t.count}×</div>
         </div>`).join('');
@@ -843,12 +864,20 @@ const MobileModule = {
   clearFilters() {
     State.filters = { branch: '', env: '', testTags: [], userRole: '', status: '' };
     State.dateRangeDays = 0;
-    State.tableSearch = '';
+    State.passThreshold = 100;
     // Reset all radios/checkboxes in sheet
     document.querySelectorAll('#filter-sheet input[type=radio][value=""]').forEach(r => r.checked = true);
     document.querySelectorAll('#filter-sheet input[type=checkbox]').forEach(c => c.checked = false);
     document.querySelectorAll('.date-pill').forEach(p => p.classList.toggle('active', p.dataset.days === '0'));
     document.querySelectorAll('input[name="filter-status"][value=""]').forEach(r => r.checked = true);
+    const desk = document.getElementById('pass-threshold');
+    const mobile = document.getElementById('pass-threshold-m');
+    if (desk) desk.value = 100;
+    if (mobile) mobile.value = 100;
+    const deskVal = document.getElementById('threshold-val');
+    const mobileVal = document.getElementById('threshold-val-m');
+    if (deskVal) deskVal.textContent = '100%';
+    if (mobileVal) mobileVal.textContent = '100%';
     DropdownModule.updateSingleLabel('dd-status-label', 'Filter Status', '');
     DropdownModule.updateSingleLabel('dd-branch-label', 'All Branches', '');
     DropdownModule.updateSingleLabel('dd-env-label', 'All Envs', '');
@@ -968,6 +997,7 @@ const App = {
     });
     this.bindClick(document.querySelector('#error-state .btn'), () => this.refresh());
     this.bindClick(document.querySelector('.mobile-filter-btn'), () => MobileModule.toggleFilterSheet());
+    this.bindClick(document.querySelector('#header-filters .threshold-chip'), () => MobileModule.toggleFilterSheet());
     this.bindClick(document.querySelector('.header-right .btn[title="Refresh"]'), () => this.refresh());
 
     document.querySelectorAll('button.btn').forEach(btn => {
@@ -1093,12 +1123,29 @@ const App = {
   updateUI() {
     FilterModule.apply();
     this.syncSearchInputs();
+    this.updateAdvancedFilterTrigger();
     const runs = State.filteredRuns;
     SummaryModule.render(runs);
     ChartModule.renderAll(runs);
     BreakdownModule.renderAll(runs);
     TopFailingModule.render(runs);
     TableModule.render();
+  },
+
+  updateAdvancedFilterTrigger() {
+    const trigger = document.querySelector('#header-filters .threshold-chip');
+    if (!trigger) return;
+    const count = [
+      State.dateRangeDays > 0,
+      !!State.filters.status,
+      !!State.filters.branch,
+      !!State.filters.env,
+      State.filters.testTags.length > 0,
+      !!State.filters.userRole,
+      State.passThreshold !== 100,
+    ].filter(Boolean).length;
+    trigger.dataset.count = count > 0 ? String(count) : '';
+    trigger.classList.toggle('has-active-filters', count > 0);
   },
 
   exportCSV() { ExportModule.download(State.filteredRuns); },
