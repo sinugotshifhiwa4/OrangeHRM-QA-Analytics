@@ -21,6 +21,7 @@ const State = {
   refreshTimer: null,
   countdown: 60,
   compareIds: new Set(),
+  expandedRuns: new Set(),
 };
 
 /* ─── Utils ─── */
@@ -54,6 +55,20 @@ const Utils = {
   pct(v) { return v != null ? `${Math.round(v)}%` : '—'; },
   escape(s) {
     return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  },
+  matchesSearch(run, search) {
+    if (!search) return true;
+    const haystacks = [
+      run.branch,
+      run.testType,
+      run.env,
+      run.userRole,
+      run.runNumber,
+      run.formattedDate,
+      run.status,
+      ...(run.failedTests || []).flatMap(t => [t.name, t.classname, t.failureMessage]),
+    ];
+    return haystacks.some(v => String(v || '').toLowerCase().includes(search));
   },
 };
 
@@ -280,6 +295,7 @@ const FilterModule = {
     const { branch, env, testTags, userRole, status } = State.filters;
     const cutoff = State.dateRangeDays > 0 ? Date.now() - State.dateRangeDays * 86400000 : 0;
     const thr = State.passThreshold;
+    const search = State.tableSearch.trim().toLowerCase();
 
     State.filteredRuns = State.allRuns
       .filter(r => {
@@ -296,6 +312,7 @@ const FilterModule = {
       }))
       .filter(r => {
         if (status && r.status !== status) return false;
+        if (!Utils.matchesSearch(r, search)) return false;
         return true;
       });
   },
@@ -580,14 +597,16 @@ const TopFailingModule = {
 
 /* ─── Table ─── */
 const TableModule = {
+  toggleDetails(rn) {
+    if (State.expandedRuns.has(rn)) State.expandedRuns.delete(rn);
+    else State.expandedRuns.add(rn);
+    this.render();
+  },
+
   render() {
-    const search = State.tableSearch.toLowerCase();
     const avgDur = Utils.avg(State.filteredRuns.filter(r => r.durationMin != null && r.durationMin > 0).map(r => r.durationMin));
     const outlier = avgDur * 1.5;
-    let rows = State.filteredRuns.filter(r => {
-      if (!search) return true;
-      return [r.branch, r.testType, r.env, r.runNumber, r.formattedDate].some(v => String(v || '').toLowerCase().includes(search));
-    });
+    let rows = [...State.filteredRuns];
     const { col, dir } = State.sort;
     rows = rows.sort((a, b) => {
       let av = a[col], bv = b[col];
@@ -600,6 +619,7 @@ const TableModule = {
     const rClass = r => r.passRate >= State.passThreshold ? 'high' : r.passRate >= 70 ? 'mid' : 'low';
     document.getElementById('runs-tbody').innerHTML = rows.map(r => {
       const sel = State.compareIds.has(r.runNumber);
+      const expanded = State.expandedRuns.has(r.runNumber);
       const isOutlier = avgDur > 0 && r.durationMin != null && r.durationMin > outlier;
       const rLink = r.reportUrl
         ? `<a href="${Utils.escape(r.reportUrl)}" target="_blank" class="link-btn">Report</a>`
@@ -608,7 +628,7 @@ const TableModule = {
         ? `<a href="${Utils.escape(r.allureUrl)}" target="_blank" class="link-btn">Allure</a>`
         : `<span class="link-btn disabled">Allure</span>`;
       return `<tr class="${r.status === 'FAIL' ? 'row-fail' : ''}${sel ? ' row-compare' : ''}">
-        <td><input type="checkbox" class="cmp-cb" ${sel ? 'checked' : ''} ${!sel && State.compareIds.size >= 2 ? 'disabled' : ''} onchange="CompareModule.toggle(${r.runNumber},this.checked)"/></td>
+        <td><input type="checkbox" class="cmp-cb" data-run-number="${r.runNumber}" ${sel ? 'checked' : ''} ${!sel && State.compareIds.size >= 2 ? 'disabled' : ''} /></td>
         <td class="mono">#${r.runNumber ?? '—'}</td>
         <td class="mono col-hide">${r.formattedDate}</td>
         <td class="mono">${Utils.escape(r.branch || '—')}</td>
@@ -626,8 +646,53 @@ const TableModule = {
         <td class="mono col-hide">${Utils.formatDuration(r.durationMin)}${isOutlier ? ' <span class="badge badge-skip" style="font-size:9px">slow</span>' : ''}</td>
         <td><span class="badge badge-${r.status === 'PASS' ? 'pass' : 'fail'}">${r.status}</span></td>
         <td class="col-hide"><div class="links-cell">${rLink}${aLink}</div></td>
+        <td class="mobile-row-toggle-cell">
+          <button class="mobile-row-toggle" type="button" data-run-number="${r.runNumber}" aria-expanded="${expanded ? 'true' : 'false'}">
+            ${expanded ? 'Hide details' : 'View details'}
+          </button>
+        </td>
+        <td class="mobile-row-details-cell">
+          <div class="mobile-row-details ${expanded ? 'open' : ''}">
+            <div class="mobile-detail-grid">
+              <div class="mobile-detail-item">
+                <span class="mobile-detail-label">Tag</span>
+                <span class="pill pill-purple">@${Utils.escape(r.testType || '—')}</span>
+              </div>
+              <div class="mobile-detail-item">
+                <span class="mobile-detail-label">User</span>
+                <span class="pill pill-orange">${Utils.escape(r.userRole || '—')}</span>
+              </div>
+              <div class="mobile-detail-item">
+                <span class="mobile-detail-label">Env</span>
+                <span class="pill pill-blue">${Utils.escape(r.env || '—')}</span>
+              </div>
+              <div class="mobile-detail-item">
+                <span class="mobile-detail-label">Flaky</span>
+                <span class="mono">${r.flaky || 0}</span>
+              </div>
+              <div class="mobile-detail-item">
+                <span class="mobile-detail-label">Duration</span>
+                <span class="mono">${Utils.formatDuration(r.durationMin)}${isOutlier ? ' slow' : ''}</span>
+              </div>
+              <div class="mobile-detail-item mobile-detail-links">
+                <span class="mobile-detail-label">Links</span>
+                <div class="links-cell">${rLink}${aLink}</div>
+              </div>
+            </div>
+          </div>
+        </td>
       </tr>`;
     }).join('');
+    document.querySelectorAll('.cmp-cb').forEach(cb => {
+      cb.addEventListener('change', () => {
+        CompareModule.toggle(Number(cb.dataset.runNumber), cb.checked);
+      });
+    });
+    document.querySelectorAll('.mobile-row-toggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.toggleDetails(Number(btn.dataset.runNumber));
+      });
+    });
     document.querySelectorAll('#runs-table thead th[data-col]').forEach(th => {
       th.classList.toggle('sorted', th.dataset.col === col);
       const a = th.textContent.replace(/[↑↓↕]/g, '').trim();
@@ -778,10 +843,16 @@ const MobileModule = {
   clearFilters() {
     State.filters = { branch: '', env: '', testTags: [], userRole: '', status: '' };
     State.dateRangeDays = 0;
+    State.tableSearch = '';
     // Reset all radios/checkboxes in sheet
     document.querySelectorAll('#filter-sheet input[type=radio][value=""]').forEach(r => r.checked = true);
     document.querySelectorAll('#filter-sheet input[type=checkbox]').forEach(c => c.checked = false);
     document.querySelectorAll('.date-pill').forEach(p => p.classList.toggle('active', p.dataset.days === '0'));
+    document.querySelectorAll('input[name="filter-status"][value=""]').forEach(r => r.checked = true);
+    DropdownModule.updateSingleLabel('dd-status-label', 'Filter Status', '');
+    DropdownModule.updateSingleLabel('dd-branch-label', 'All Branches', '');
+    DropdownModule.updateSingleLabel('dd-env-label', 'All Envs', '');
+    DropdownModule.updateSingleLabel('dd-user-label', 'All Users', '');
     DropdownModule.updateTagsLabel();
     App.updateUI();
   },
@@ -870,7 +941,60 @@ const MobileModule = {
 
 
 const App = {
+  bindClick(el, handler) {
+    if (!el) return;
+    el.removeAttribute('onclick');
+    el.onclick = null;
+    el.addEventListener('click', handler);
+  },
+
+  syncSearchInputs() {
+    const header = document.getElementById('header-search');
+    const table = document.getElementById('table-search');
+    if (header && header.value !== State.tableSearch) header.value = State.tableSearch;
+    if (table && table.value !== State.tableSearch) table.value = State.tableSearch;
+  },
+
+  bindStaticActions() {
+    this.bindClick(document.getElementById('sidebar-overlay'), () => MobileModule.closeSidebar());
+    this.bindClick(document.getElementById('hamburger'), () => MobileModule.openSidebar());
+    this.bindClick(document.getElementById('filter-sheet-overlay'), () => MobileModule.closeFilterSheet());
+    this.bindClick(document.querySelector('#filter-sheet .modal-close'), () => MobileModule.closeFilterSheet());
+    this.bindClick(document.querySelector('#compare-modal .modal-close'), () => CompareModule.close());
+    const compareModal = document.getElementById('compare-modal');
+    compareModal?.removeAttribute('onclick');
+    compareModal?.addEventListener('click', e => {
+      if (e.target === e.currentTarget) CompareModule.close();
+    });
+    this.bindClick(document.querySelector('#error-state .btn'), () => this.refresh());
+    this.bindClick(document.querySelector('.mobile-filter-btn'), () => MobileModule.toggleFilterSheet());
+    this.bindClick(document.querySelector('.header-right .btn[title="Refresh"]'), () => this.refresh());
+
+    document.querySelectorAll('button.btn').forEach(btn => {
+      if (btn.textContent.includes('CSV')) {
+        this.bindClick(btn, () => this.exportCSV());
+      }
+    });
+
+    const sheetButtons = document.querySelectorAll('.filter-sheet-footer .btn');
+    this.bindClick(sheetButtons[0], () => MobileModule.clearFilters());
+    this.bindClick(sheetButtons[1], () => MobileModule.closeFilterSheet());
+
+    this.bindClick(document.querySelector('#compare-bar .btn:not(#compare-btn)'), () => CompareModule.clear());
+    this.bindClick(document.getElementById('compare-btn'), () => CompareModule.open());
+
+    ['dd-status', 'dd-branch', 'dd-env', 'dd-tags', 'dd-user'].forEach(id => {
+      const trigger = document.querySelector(`#${id} .dropdown-trigger`);
+      this.bindClick(trigger, e => {
+        e.stopPropagation();
+        DropdownModule.toggle(id);
+      });
+    });
+  },
+
   async init() {
+    this.bindStaticActions();
+
     // Mobile bottom nav
     document.querySelectorAll('.mbn-item').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -914,13 +1038,15 @@ const App = {
     // Header search (mirrors to table search)
     document.getElementById('header-search')?.addEventListener('input', e => {
       State.tableSearch = e.target.value;
-      TableModule.render();
+      this.syncSearchInputs();
+      this.updateUI();
     });
 
     // Table search
     document.getElementById('table-search')?.addEventListener('input', e => {
       State.tableSearch = e.target.value;
-      TableModule.render();
+      this.syncSearchInputs();
+      this.updateUI();
     });
 
     // Table sort
@@ -944,6 +1070,7 @@ const App = {
       State.allRuns = DataModule.normalize(raw);
       DropdownModule.populate();
       MobileModule.populateSheet();
+      this.syncSearchInputs();
       this.updateUI();
       document.getElementById('last-updated').textContent =
         (DataModule.usingMock ? '⚠ Mock · ' : '') + 'Updated ' + new Date().toLocaleTimeString('en-ZA');
@@ -965,6 +1092,7 @@ const App = {
 
   updateUI() {
     FilterModule.apply();
+    this.syncSearchInputs();
     const runs = State.filteredRuns;
     SummaryModule.render(runs);
     ChartModule.renderAll(runs);
@@ -983,5 +1111,7 @@ const App = {
     );
   },
 };
+
+Object.assign(window, { App, MobileModule, DropdownModule, CompareModule });
 
 document.addEventListener('DOMContentLoaded', () => App.init());
