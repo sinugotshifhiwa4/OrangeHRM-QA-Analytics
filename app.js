@@ -6,6 +6,7 @@
 const State = {
   allRuns: [],
   filteredRuns: [],
+  visualSection: 'quality',
   filters: {
     branch: '',
     env: '',
@@ -56,6 +57,26 @@ const Utils = {
   escape(s) {
     return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   },
+  delta(curr, prev) {
+    if (curr == null || prev == null) return null;
+    return +(curr - prev).toFixed(1);
+  },
+  deltaLabel(delta, suffix = '%') {
+    if (delta == null || Number.isNaN(delta)) return 'No prior baseline';
+    const rounded = Math.abs(delta) >= 10 ? Math.round(delta) : delta.toFixed(1).replace(/\.0$/, '');
+    return `${delta > 0 ? '+' : ''}${rounded}${suffix}`;
+  },
+  ratio(part, total) {
+    return total > 0 ? (part / total) * 100 : 0;
+  },
+  clamp(v, min, max) {
+    return Math.min(max, Math.max(min, v));
+  },
+  titleCase(value) {
+    return String(value || 'Unknown')
+      .replace(/[-_/]+/g, ' ')
+      .replace(/\b\w/g, ch => ch.toUpperCase());
+  },
   matchesSearch(run, search) {
     if (!search) return true;
     const haystacks = [
@@ -69,6 +90,111 @@ const Utils = {
       ...(run.failedTests || []).flatMap(t => [t.name, t.classname, t.failureMessage]),
     ];
     return haystacks.some(v => String(v || '').toLowerCase().includes(search));
+  },
+};
+
+const AnalyticsModule = {
+  criticalTags: new Set(['smoke', 'sanity', 'critical', 'authenticate']),
+
+  splitRuns(runs) {
+    const ordered = [...runs].sort((a, b) => b._dateMs - a._dateMs);
+    const midpoint = Math.max(1, Math.floor(ordered.length / 2));
+    return {
+      current: ordered.slice(0, midpoint),
+      previous: ordered.slice(midpoint),
+    };
+  },
+
+  classifyFailure(test = {}) {
+    const haystack = `${test.name || ''} ${test.classname || ''} ${test.failureMessage || ''}`.toLowerCase();
+    if (/(api|request|response|endpoint|graphql)/.test(haystack)) return 'API';
+    if (/(auth|login|logout|password|session|credential|token)/.test(haystack)) return 'Auth';
+    if (/(data|fixture|db|database|employee|record|seed|sync)/.test(haystack)) return 'Data';
+    if (/(ui|locator|page|modal|button|form|dashboard|grid|table|click|visible)/.test(haystack)) return 'UI';
+    return 'Workflow';
+  },
+
+  moduleName(test = {}) {
+    const raw = test.classname || test.name || 'unknown';
+    const normalized = String(raw).replace(/\\/g, '/').toLowerCase();
+    const parts = normalized.split('/').filter(Boolean);
+    const specLike = parts.find(part => part.includes('.spec'));
+    const base = specLike
+      ? specLike.replace(/\.[^.]+$/, '').replace(/\.spec$/i, '')
+      : parts.reverse().find(part => !part.includes('.')) || parts[parts.length - 1] || 'unknown';
+    return Utils.titleCase(base || 'unknown');
+  },
+
+  countFailuresBy(runs, mapper) {
+    const map = {};
+    runs.forEach(run => {
+      (run.failedTests || []).forEach(test => {
+        const key = mapper(test, run) || 'Unknown';
+        map[key] = (map[key] || 0) + 1;
+      });
+    });
+    return Object.entries(map)
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count);
+  },
+
+  summarize(runs) {
+    const ordered = [...runs].sort((a, b) => b._dateMs - a._dateMs);
+    const latest = ordered[0] || null;
+    const avgPass = Utils.avg(runs.map(r => r.passRate || 0));
+    const avgFailures = Utils.avg(runs.map(r => r.failed || 0));
+    const failingRuns = runs.filter(r => r.status === 'FAIL').length;
+    const totalFailures = Utils.sum(runs.map(r => r.failed || 0));
+    const totalFlaky = Utils.sum(runs.map(r => r.flaky || 0));
+    const flakyRunShare = Utils.ratio(runs.filter(r => (r.flaky || 0) > 0).length, runs.length);
+    const criticalRuns = runs.filter(r => this.criticalTags.has(String(r.testType || '').toLowerCase()));
+    const criticalFailingRuns = criticalRuns.filter(r => r.status === 'FAIL').length;
+    const passPenalty = 100 - avgPass;
+    const failPenalty = Utils.clamp(avgFailures * 7, 0, 28);
+    const flakyPenalty = Utils.clamp(flakyRunShare * 0.35, 0, 16);
+    const criticalPenalty = criticalFailingRuns > 0 ? 18 : 0;
+    const releaseScore = Math.round(Utils.clamp(100 - passPenalty - failPenalty - flakyPenalty - criticalPenalty, 0, 100));
+    const releaseStatus = releaseScore >= 90 && criticalFailingRuns === 0
+      ? 'Ready to Release'
+      : releaseScore >= 75 && criticalFailingRuns === 0
+        ? 'Release With Caution'
+        : 'Hold Release';
+    const decisionTone = releaseStatus === 'Ready to Release' ? 'good' : releaseStatus === 'Release With Caution' ? 'warn' : 'bad';
+    const windows = this.splitRuns(runs);
+    const currentAvgPass = Utils.avg(windows.current.map(r => r.passRate || 0));
+    const previousAvgPass = Utils.avg(windows.previous.map(r => r.passRate || 0));
+    const currentAvgFailures = Utils.avg(windows.current.map(r => r.failed || 0));
+    const previousAvgFailures = Utils.avg(windows.previous.map(r => r.failed || 0));
+    const currentFlakyShare = Utils.ratio(windows.current.filter(r => (r.flaky || 0) > 0).length, windows.current.length);
+    const previousFlakyShare = Utils.ratio(windows.previous.filter(r => (r.flaky || 0) > 0).length, windows.previous.length);
+    const categoryCounts = this.countFailuresBy(runs, test => this.classifyFailure(test));
+    const moduleCounts = this.countFailuresBy(runs, test => this.moduleName(test));
+    const topCategory = categoryCounts[0] || null;
+    const topModule = moduleCounts[0] || null;
+
+    return {
+      latest,
+      avgPass,
+      avgFailures,
+      failingRuns,
+      totalFailures,
+      totalFlaky,
+      flakyRunShare,
+      criticalRuns,
+      criticalFailingRuns,
+      releaseScore,
+      releaseStatus,
+      decisionTone,
+      passDelta: Utils.delta(currentAvgPass, previousAvgPass),
+      failureDelta: Utils.delta(currentAvgFailures, previousAvgFailures),
+      flakyDelta: Utils.delta(currentFlakyShare, previousFlakyShare),
+      categoryCounts,
+      moduleCounts,
+      topCategory,
+      topModule,
+      categoryShare: topCategory ? Utils.ratio(topCategory.count, Math.max(1, categoryCounts.reduce((sum, item) => sum + item.count, 0))) : 0,
+      moduleShare: topModule ? Utils.ratio(topModule.count, Math.max(1, moduleCounts.reduce((sum, item) => sum + item.count, 0))) : 0,
+    };
   },
 };
 
@@ -617,6 +743,260 @@ const TopFailingModule = {
 };
 
 /* ─── Table ─── */
+const ExecutiveModule = {
+  render(runs) {
+    const hero = document.getElementById('executive-hero');
+    const insights = document.getElementById('insight-cards');
+    if (!hero || !insights) return;
+
+    if (!runs.length) {
+      hero.innerHTML = `<div class="hero-main"><div class="hero-kicker">Executive Release View</div><div class="hero-title">No runs match the current filters.</div><div class="hero-text">Adjust the board filters to restore the release view.</div></div>`;
+      insights.innerHTML = '';
+      return;
+    }
+
+    const summary = AnalyticsModule.summarize(runs);
+    const latest = summary.latest;
+    const branchLabel = latest?.branch ? Utils.escape(latest.branch) : 'current branch set';
+    const runLabel = latest?.runNumber != null ? `Run #${latest.runNumber}` : 'Latest run';
+    const criticalSummary = summary.criticalRuns.length
+      ? `${summary.criticalFailingRuns}/${summary.criticalRuns.length} critical runs failed`
+      : 'No critical-tag runs in current filter';
+    const topCategoryLine = summary.topCategory
+      ? `${summary.topCategory.label} issues drive ${Math.round(summary.categoryShare)}% of logged failures`
+      : 'No failure categories in the selected window';
+    const topModuleLine = summary.topModule
+      ? `${summary.topModule.label} contributes ${Math.round(summary.moduleShare)}% of observed failures`
+      : 'No module concentration detected';
+
+    hero.innerHTML = `
+      <div class="hero-main">
+        <div class="hero-kicker">Executive Release View</div>
+        <div class="hero-title">${summary.releaseStatus}</div>
+        <div class="hero-text">${runLabel} on ${branchLabel} closed at ${Utils.pct(summary.avgPass)} average pass reliability with a release health score of ${summary.releaseScore}/100.</div>
+      </div>
+      <div class="hero-score ${summary.decisionTone}">
+        <div class="hero-score-label">Release score</div>
+        <div class="hero-score-value">${summary.releaseScore}</div>
+        <div class="hero-score-sub">${criticalSummary}</div>
+      </div>
+      <div class="hero-bullets">
+        <div class="hero-bullet">${summary.passDelta == null ? 'Baseline is forming from current S3 history.' : `Pass reliability moved ${Utils.deltaLabel(summary.passDelta)} versus the previous run window.`}</div>
+        <div class="hero-bullet">${summary.failureDelta == null ? 'Failure baseline is forming.' : `Average failures per run changed ${Utils.deltaLabel(summary.failureDelta, '')}.`}</div>
+        <div class="hero-bullet">${topCategoryLine}</div>
+        <div class="hero-bullet">${topModuleLine}</div>
+      </div>`;
+
+    const cards = [
+      {
+        label: 'Release Recommendation',
+        tone: summary.decisionTone,
+        value: summary.releaseStatus,
+        body: summary.criticalFailingRuns > 0
+          ? 'Critical-tag failures are present, so release risk is elevated.'
+          : 'No critical-tag failures are blocking the current release view.',
+      },
+      {
+        label: 'Trend Movement',
+        tone: summary.passDelta >= 0 ? 'good' : 'bad',
+        value: summary.passDelta == null ? 'Baseline forming' : `${Utils.deltaLabel(summary.passDelta)} pass rate`,
+        body: summary.failureDelta == null
+          ? 'Waiting for more historical contrast from S3.'
+          : `Average failures per run are ${summary.failureDelta > 0 ? 'up' : summary.failureDelta < 0 ? 'down' : 'flat'} ${Utils.deltaLabel(summary.failureDelta, '')} versus the previous window.`,
+      },
+      {
+        label: 'Failure Driver',
+        tone: summary.topCategory ? 'warn' : 'good',
+        value: summary.topCategory ? summary.topCategory.label : 'No active driver',
+        body: summary.topCategory
+          ? `${summary.topCategory.count} failures mapped to this category in the current view.`
+          : 'No failure categories were detected in the selected runs.',
+      },
+      {
+        label: 'Stability Risk',
+        tone: summary.flakyRunShare < 10 ? 'good' : summary.flakyRunShare < 25 ? 'warn' : 'bad',
+        value: `${Utils.pct(summary.flakyRunShare)} flaky exposure`,
+        body: summary.flakyDelta == null
+          ? 'Tracking flaky prevalence as more history accumulates.'
+          : `Flaky exposure moved ${Utils.deltaLabel(summary.flakyDelta)} compared with the previous window.`,
+      },
+    ];
+
+    insights.innerHTML = cards.map(card => `
+      <div class="insight-card ${card.tone}">
+        <div class="insight-label">${card.label}</div>
+        <div class="insight-value">${Utils.escape(card.value)}</div>
+        <div class="insight-body">${Utils.escape(card.body)}</div>
+      </div>`).join('');
+  },
+};
+
+const LastRunModule = {
+  render(runs) {
+    const panel = document.getElementById('last-run-panel');
+    if (!panel) return;
+    const latest = [...runs].sort((a, b) => b._dateMs - a._dateMs)[0];
+    if (!latest) {
+      panel.innerHTML = '';
+      return;
+    }
+
+    const approval = latest.status === 'PASS' && (latest.flaky || 0) === 0
+      ? { label: 'Approval Ready', tone: 'good', detail: 'Latest run cleared pass threshold with no flaky tests logged.' }
+      : latest.status === 'PASS'
+        ? { label: 'Approve With Caution', tone: 'warn', detail: 'Latest run passed, but flaky activity was detected.' }
+        : { label: 'Hold Approval', tone: 'bad', detail: 'Latest run failed and should be reviewed before release approval.' };
+
+    panel.innerHTML = `
+      <div class="last-run-card ${approval.tone}">
+        <div class="last-run-copy">
+          <div class="last-run-kicker">Latest ${Utils.escape(Utils.titleCase(latest.testType || 'Selected'))} Run</div>
+          <div class="last-run-title">Run #${Utils.escape(String(latest.runNumber ?? '—'))} · ${Utils.escape(latest.branch || 'unknown branch')}</div>
+          <div class="last-run-text">${latest.formattedDate} · ${Utils.escape(latest.env || 'unknown env')} · ${Utils.escape(latest.testType || 'unknown tag')}</div>
+          <div class="last-run-text">${approval.detail}</div>
+        </div>
+        <div class="last-run-metrics">
+          <div class="last-run-metric">
+            <span class="last-run-metric-label">Status</span>
+            <span class="badge badge-${latest.status === 'PASS' ? 'pass' : 'fail'}">${latest.status}</span>
+          </div>
+          <div class="last-run-metric">
+            <span class="last-run-metric-label">Pass rate</span>
+            <span class="last-run-metric-value">${Utils.pct(latest.passRate)}</span>
+          </div>
+          <div class="last-run-metric">
+            <span class="last-run-metric-label">Failures</span>
+            <span class="last-run-metric-value">${latest.failed}</span>
+          </div>
+          <div class="last-run-metric">
+            <span class="last-run-metric-label">Flaky</span>
+            <span class="last-run-metric-value">${latest.flaky || 0}</span>
+          </div>
+        </div>
+        <div class="last-run-actions">
+          <div class="last-run-approval ${approval.tone}">${approval.label}</div>
+          <button class="btn btn-primary" id="last-run-open-btn" type="button">Review Last Run</button>
+        </div>
+      </div>`;
+
+    document.getElementById('last-run-open-btn')?.addEventListener('click', () => this.open(latest));
+  },
+
+  open(run = null) {
+    const modal = document.getElementById('last-run-modal');
+    const body = document.getElementById('last-run-modal-body');
+    if (!modal || !body) return;
+    const target = run || [...State.filteredRuns].sort((a, b) => b._dateMs - a._dateMs)[0];
+    if (!target) return;
+
+    const approval = target.status === 'PASS' && (target.flaky || 0) === 0
+      ? 'Go for release approval'
+      : target.status === 'PASS'
+        ? 'Review flaky signals before approval'
+        : 'Do not approve release yet';
+    const failedTests = (target.failedTests || []).slice(0, 6);
+    const links = `
+      <div class="links-cell">
+        ${target.reportUrl ? `<a href="${Utils.escape(target.reportUrl)}" target="_blank" class="link-btn">Report</a>` : `<span class="link-btn disabled">Report</span>`}
+        ${target.allureUrl ? `<a href="${Utils.escape(target.allureUrl)}" target="_blank" class="link-btn">Allure</a>` : `<span class="link-btn disabled">Allure</span>`}
+      </div>`;
+
+    body.innerHTML = `
+      <div class="last-run-modal-grid">
+        <div class="last-run-modal-hero">
+          <div class="hero-kicker">Approval Snapshot</div>
+          <div class="hero-title">Run #${Utils.escape(String(target.runNumber ?? '—'))}</div>
+          <div class="hero-text">${Utils.escape(target.branch || 'unknown branch')} · ${Utils.escape(target.env || 'unknown env')} · ${Utils.escape(target.testType || 'unknown tag')} · ${target.formattedDate}</div>
+          <div class="last-run-approval ${target.status === 'PASS' && (target.flaky || 0) === 0 ? 'good' : target.status === 'PASS' ? 'warn' : 'bad'}">${approval}</div>
+        </div>
+        <div class="last-run-modal-stats">
+          <div class="last-run-modal-stat"><span>Pass rate</span><strong>${Utils.pct(target.passRate)}</strong></div>
+          <div class="last-run-modal-stat"><span>Passed</span><strong>${target.passed}</strong></div>
+          <div class="last-run-modal-stat"><span>Failed</span><strong>${target.failed}</strong></div>
+          <div class="last-run-modal-stat"><span>Skipped</span><strong>${target.skipped}</strong></div>
+          <div class="last-run-modal-stat"><span>Flaky</span><strong>${target.flaky || 0}</strong></div>
+          <div class="last-run-modal-stat"><span>Duration</span><strong>${Utils.formatDuration(target.durationMin)}</strong></div>
+        </div>
+      </div>
+      <div class="last-run-modal-section">
+        <div class="section-hd">
+          <div class="section-title"><span class="section-title-dot"></span>Release Decision Support</div>
+          ${links}
+        </div>
+        <div class="last-run-modal-notes">
+          <div class="hero-bullet">Status is <strong>${target.status}</strong> against the current release threshold of ${State.passThreshold}%.</div>
+          <div class="hero-bullet">${target.failed > 0 ? `${target.failed} failing tests require resolution or explicit sign-off.` : 'No failing tests were recorded in the latest run.'}</div>
+          <div class="hero-bullet">${(target.flaky || 0) > 0 ? `${target.flaky} flaky tests were detected and should be reviewed for release confidence.` : 'No flaky tests were recorded in the latest run.'}</div>
+        </div>
+      </div>
+      <div class="last-run-modal-section">
+        <div class="section-hd">
+          <div class="section-title"><span class="section-title-dot"></span>Latest Failures</div>
+          <span class="section-sub">${failedTests.length} shown</span>
+        </div>
+        ${failedTests.length
+          ? failedTests.map(test => `
+            <div class="failing-item">
+              <div class="failing-rank hot">!</div>
+              <div style="flex:1;min-width:0">
+                <div class="failing-name">${Utils.escape(test.name || 'Unnamed failure')}</div>
+                <div class="failing-file">${Utils.escape(test.classname || 'No file path')}</div>
+                ${test.failureMessage ? `<div class="failing-msg">${Utils.escape(String(test.failureMessage).split('\n')[0])}</div>` : ''}
+              </div>
+            </div>`).join('')
+          : `<div class="failing-empty">No per-test failures were attached to the latest run</div>`}
+      </div>`;
+
+    modal.classList.add('open');
+  },
+
+  close() {
+    document.getElementById('last-run-modal')?.classList.remove('open');
+  },
+};
+
+const RiskModule = {
+  renderCategoryList(runs) {
+    const sub = document.getElementById('failure-categories-sub');
+    const list = document.getElementById('failure-categories-list');
+    if (!sub || !list) return;
+    const categories = AnalyticsModule.summarize(runs).categoryCounts.slice(0, 5);
+    const total = categories.reduce((sum, item) => sum + item.count, 0);
+    sub.textContent = total ? `${total} categorized failure points` : 'No categorized failure data';
+    list.innerHTML = categories.length
+      ? categories.map(item => `
+        <div class="failing-item">
+          <div class="failing-rank">${Utils.escape(String(item.count))}</div>
+          <div style="flex:1;min-width:0">
+            <div class="failing-name">${Utils.escape(item.label)}</div>
+            <div class="failing-file">${Math.round(Utils.ratio(item.count, total))}% of categorized failures</div>
+          </div>
+          <div class="failing-badge">${item.count}x</div>
+        </div>`).join('')
+      : `<div class="failing-empty">No failure categories found for the selected runs</div>`;
+  },
+
+  renderModules(runs) {
+    const sub = document.getElementById('top-modules-sub');
+    const list = document.getElementById('top-modules-list');
+    if (!sub || !list) return;
+    const modules = AnalyticsModule.summarize(runs).moduleCounts.slice(0, 6);
+    const total = modules.reduce((sum, item) => sum + item.count, 0);
+    sub.textContent = total ? `${modules.length} modules with repeated failures` : 'No module hotspots';
+    list.innerHTML = modules.length
+      ? modules.map((item, i) => `
+        <div class="failing-item">
+          <div class="failing-rank ${i < 2 ? 'hot' : ''}">${i + 1}</div>
+          <div style="flex:1;min-width:0">
+            <div class="failing-name">${Utils.escape(item.label)}</div>
+            <div class="failing-file">${Math.round(Utils.ratio(item.count, total))}% of module-linked failures</div>
+          </div>
+          <div class="failing-badge">${item.count}x</div>
+        </div>`).join('')
+      : `<div class="failing-empty">No module-level hotspots found for the selected runs</div>`;
+  },
+};
+
 const TableModule = {
   toggleDetails(rn) {
     if (State.expandedRuns.has(rn)) State.expandedRuns.delete(rn);
@@ -818,6 +1198,21 @@ const NavModule = {
   },
 };
 
+const VisualsModule = {
+  show(section) {
+    State.visualSection = section;
+    document.querySelectorAll('.visual-tab').forEach(tab =>
+      tab.classList.toggle('active', tab.dataset.visualSection === section)
+    );
+    document.querySelectorAll('.visual-section').forEach(panel =>
+      panel.classList.toggle('active', panel.dataset.visualSection === section)
+    );
+    if (NavModule.current === 'breakdown') {
+      setTimeout(() => ChartModule.renderAll(State.filteredRuns), 50);
+    }
+  },
+};
+
 /* ─── Timer ─── */
 const TimerModule = {
   start() {
@@ -990,10 +1385,15 @@ const App = {
     this.bindClick(document.getElementById('filter-sheet-overlay'), () => MobileModule.closeFilterSheet());
     this.bindClick(document.querySelector('#filter-sheet .modal-close'), () => MobileModule.closeFilterSheet());
     this.bindClick(document.querySelector('#compare-modal .modal-close'), () => CompareModule.close());
+    this.bindClick(document.getElementById('last-run-modal-close'), () => LastRunModule.close());
     const compareModal = document.getElementById('compare-modal');
     compareModal?.removeAttribute('onclick');
     compareModal?.addEventListener('click', e => {
       if (e.target === e.currentTarget) CompareModule.close();
+    });
+    const lastRunModal = document.getElementById('last-run-modal');
+    lastRunModal?.addEventListener('click', e => {
+      if (e.target === e.currentTarget) LastRunModule.close();
     });
     this.bindClick(document.querySelector('#error-state .btn'), () => this.refresh());
     this.bindClick(document.querySelector('.mobile-filter-btn'), () => MobileModule.toggleFilterSheet());
@@ -1019,6 +1419,10 @@ const App = {
         e.stopPropagation();
         DropdownModule.toggle(id);
       });
+    });
+
+    document.querySelectorAll('.visual-tab').forEach(tab => {
+      this.bindClick(tab, () => VisualsModule.show(tab.dataset.visualSection));
     });
   },
 
@@ -1125,10 +1529,15 @@ const App = {
     this.syncSearchInputs();
     this.updateAdvancedFilterTrigger();
     const runs = State.filteredRuns;
+    ExecutiveModule.render(runs);
+    LastRunModule.render(runs);
     SummaryModule.render(runs);
     ChartModule.renderAll(runs);
     BreakdownModule.renderAll(runs);
     TopFailingModule.render(runs);
+    RiskModule.renderModules(runs);
+    RiskModule.renderCategoryList(runs);
+    VisualsModule.show(State.visualSection);
     TableModule.render();
   },
 
@@ -1159,6 +1568,6 @@ const App = {
   },
 };
 
-Object.assign(window, { App, MobileModule, DropdownModule, CompareModule });
+Object.assign(window, { App, MobileModule, DropdownModule, CompareModule, LastRunModule });
 
 document.addEventListener('DOMContentLoaded', () => App.init());

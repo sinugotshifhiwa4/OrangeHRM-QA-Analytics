@@ -37,7 +37,7 @@
     </div>
     <div class="nav-item" data-page="breakdown">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="8" width="3" height="7" rx="1"/><rect x="6" y="5" width="3" height="10" rx="1"/><rect x="11" y="2" width="3" height="13" rx="1"/></svg>
-      Breakdown
+      Visuals
     </div>
     <div class="nav-item" data-page="runs">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="14" y2="8"/><line x1="2" y1="12" x2="10" y2="12"/></svg>
@@ -211,7 +211,7 @@
     </button>
     <button class="mbn-item" data-page="breakdown">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="8" width="3" height="7" rx="1"/><rect x="6" y="5" width="3" height="10" rx="1"/><rect x="11" y="2" width="3" height="13" rx="1"/></svg>
-      <span>Breakdown</span>
+      <span>Visuals</span>
     </button>
     <button class="mbn-item" data-page="runs">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="14" y2="8"/><line x1="2" y1="12" x2="10" y2="12"/></svg>
@@ -240,46 +240,10 @@
 
   <!-- ── Overview ── -->
   <div id="page-overview" class="page fade-in">
+    <div class="executive-hero" id="executive-hero"></div>
+    <div class="last-run-panel" id="last-run-panel"></div>
     <div class="summary-row" id="summary-cards"></div>
-    <div class="charts-row">
-      <div class="chart-card">
-        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Pass Rate Trend</div></div>
-        <canvas id="chart-passrate"></canvas>
-      </div>
-      <div class="chart-card">
-        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Failures Over Time</div></div>
-        <canvas id="chart-failures"></canvas>
-      </div>
-      <div class="chart-card">
-        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Flaky Tests</div></div>
-        <canvas id="chart-flaky"></canvas>
-      </div>
-    </div>
-    <div class="failing-card">
-      <div class="failing-card-hd">
-        <div class="section-title"><span class="section-title-dot"></span>Top Failing Tests</div>
-        <span class="section-sub" id="top-failing-sub"></span>
-      </div>
-      <div id="top-failing-list"></div>
-    </div>
-    <div class="breakdown-row">
-      <div class="breakdown-card">
-        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>By Test Tag</div></div>
-        <div id="breakdown-type"></div>
-      </div>
-      <div class="breakdown-card">
-        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>By Branch</div></div>
-        <div id="breakdown-branch"></div>
-      </div>
-      <div class="breakdown-card">
-        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>By Environment</div></div>
-        <div id="breakdown-env"></div>
-      </div>
-      <div class="breakdown-card">
-        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>By User Role</div></div>
-        <div id="breakdown-user"></div>
-      </div>
-    </div>
+    <div class="insight-grid" id="insight-cards"></div>
   </div>
 
   <!-- ── Trends ── -->
@@ -304,13 +268,104 @@
     </div>
   </div>
 
-  <!-- ── Breakdown ── -->
+  <!-- ── Visuals ── -->
   <div id="page-breakdown" class="page fade-in">
-    <div class="breakdown-charts">
-      <div class="chart-card-full"><div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Avg Pass Rate by Test Tag</div></div><canvas id="chart-bar-type" style="max-height:200px"></canvas></div>
-      <div class="chart-card-full"><div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Avg Pass Rate by Branch</div></div><canvas id="chart-bar-branch" style="max-height:200px"></canvas></div>
-      <div class="chart-card-full"><div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Runs by Environment</div></div><canvas id="chart-bar-env" style="max-height:200px"></canvas></div>
-      <div class="chart-card-full"><div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Avg Pass Rate by User Role</div></div><canvas id="chart-bar-user" style="max-height:200px"></canvas></div>
+    <div class="visuals-shell">
+      <div class="visuals-header">
+        <div>
+          <div class="section-title"><span class="section-title-dot"></span>Visual Explorer</div>
+          <div class="section-sub">Switch by topic to make patterns easier to absorb.</div>
+        </div>
+        <div class="visual-tabs" id="visual-tabs">
+          <button class="visual-tab active" data-visual-section="quality">Quality</button>
+          <button class="visual-tab" data-visual-section="environment">Environment</button>
+          <button class="visual-tab" data-visual-section="users">Users</button>
+          <button class="visual-tab" data-visual-section="failures">Failures</button>
+        </div>
+      </div>
+
+      <div class="visual-section active" data-visual-section="quality">
+        <div class="charts-row">
+          <div class="chart-card">
+            <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Release Health Trend</div></div>
+            <canvas id="chart-passrate"></canvas>
+          </div>
+          <div class="chart-card">
+            <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Failure Pressure Over Time</div></div>
+            <canvas id="chart-failures"></canvas>
+          </div>
+          <div class="chart-card">
+            <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Flaky Trend</div></div>
+            <canvas id="chart-flaky"></canvas>
+          </div>
+        </div>
+        <div class="breakdown-row">
+          <div class="breakdown-card">
+            <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Suite Health by Tag</div></div>
+            <div id="breakdown-type"></div>
+          </div>
+          <div class="breakdown-card">
+            <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Branch Readiness</div></div>
+            <div id="breakdown-branch"></div>
+          </div>
+        </div>
+        <div class="breakdown-charts">
+          <div class="chart-card-full"><div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Avg Pass Rate by Test Tag</div></div><canvas id="chart-bar-type" style="max-height:200px"></canvas></div>
+          <div class="chart-card-full"><div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Avg Pass Rate by Branch</div></div><canvas id="chart-bar-branch" style="max-height:200px"></canvas></div>
+        </div>
+      </div>
+
+      <div class="visual-section" data-visual-section="environment">
+        <div class="breakdown-row breakdown-row-split">
+          <div class="breakdown-card">
+            <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Environment Stability</div></div>
+            <div id="breakdown-env"></div>
+          </div>
+          <div class="chart-card-full">
+            <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Runs by Environment</div></div>
+            <canvas id="chart-bar-env" style="max-height:200px"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="visual-section" data-visual-section="users">
+        <div class="breakdown-row breakdown-row-split">
+          <div class="breakdown-card">
+            <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>User Journey Stability</div></div>
+            <div id="breakdown-user"></div>
+          </div>
+          <div class="chart-card-full">
+            <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Avg Pass Rate by User Role</div></div>
+            <canvas id="chart-bar-user" style="max-height:200px"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="visual-section" data-visual-section="failures">
+        <div class="overview-duo">
+          <div class="failing-card">
+            <div class="failing-card-hd">
+              <div class="section-title"><span class="section-title-dot"></span>Top Failing Tests</div>
+              <span class="section-sub" id="top-failing-sub"></span>
+            </div>
+            <div id="top-failing-list"></div>
+          </div>
+          <div class="failing-card">
+            <div class="failing-card-hd">
+              <div class="section-title"><span class="section-title-dot"></span>Top Failing Modules</div>
+              <span class="section-sub" id="top-modules-sub"></span>
+            </div>
+            <div id="top-modules-list"></div>
+          </div>
+        </div>
+        <div class="failing-card">
+          <div class="failing-card-hd">
+            <div class="section-title"><span class="section-title-dot"></span>Failure Categories</div>
+            <span class="section-sub" id="failure-categories-sub"></span>
+          </div>
+          <div id="failure-categories-list"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -366,6 +421,16 @@
       <button class="modal-close" onclick="CompareModule.close()">✕</button>
     </div>
     <div class="modal-body" id="compare-modal-body"></div>
+  </div>
+</div>
+
+<div class="modal-back" id="last-run-modal">
+  <div class="modal">
+    <div class="modal-hd">
+      <div class="modal-title">Last Run Approval Summary</div>
+      <button class="modal-close" id="last-run-modal-close">✕</button>
+    </div>
+    <div class="modal-body" id="last-run-modal-body"></div>
   </div>
 </div>
 
