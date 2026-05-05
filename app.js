@@ -453,7 +453,19 @@ const FilterModule = {
 /* ─── Charts ─── */
 const CHART_DEFAULTS = {
   plugins: {
-    legend: { labels: { color: '#44495e', font: { family: 'DM Mono, monospace', size: 10 }, boxWidth: 7, padding: 10 } },
+    legend: {
+      position: 'bottom',
+      align: 'start',
+      labels: {
+        color: '#7c82a0',
+        font: { family: 'DM Mono, monospace', size: 10 },
+        boxWidth: 10,
+        boxHeight: 10,
+        usePointStyle: true,
+        pointStyle: 'rectRounded',
+        padding: 16,
+      },
+    },
     tooltip: {
       backgroundColor: '#1a1d26', borderColor: '#ffffff17', borderWidth: 1,
       titleColor: '#f0f1f5', bodyColor: '#7c82a0',
@@ -462,10 +474,26 @@ const CHART_DEFAULTS = {
       padding: 8, cornerRadius: 5,
     },
   },
+  layout: {
+    padding: { top: 6, right: 6, bottom: 2, left: 2 },
+  },
   scales: {
     x: { ticks: { color: '#44495e', font: { family: 'DM Mono, monospace', size: 9 }, maxRotation: 40, maxTicksLimit: 10 }, grid: { color: '#ffffff08' } },
     y: { ticks: { color: '#44495e', font: { family: 'DM Mono, monospace', size: 9 } }, grid: { color: '#ffffff08' } },
   },
+};
+
+const CHART_COLORS = {
+  pass: '#22d17b',
+  passFill: '#22d17b24',
+  fail: '#f25f5c',
+  failFill: '#f25f5c3d',
+  flaky: '#f5c542',
+  flakyFill: '#f5c54233',
+  skipped: '#c1c7d6',
+  skippedFill: '#c1c7d633',
+  duration: '#4f8ef7',
+  durationFill: '#4f8ef71f',
 };
 
 const ChartModule = {
@@ -492,6 +520,7 @@ const ChartModule = {
   passRate(runs, id = 'chart-passrate') {
     const thr = State.passThreshold;
     const s = [...runs].sort((a, b) => a._dateMs - b._dateMs).slice(-40);
+    const isTrendsView = id === 'chart-passrate-full';
     this.create(id, {
       type: 'line',
       data: {
@@ -500,14 +529,21 @@ const ChartModule = {
           {
             label: 'Pass Rate %',
             data: s.map(r => r.passRate),
-            borderColor: '#22d17b', backgroundColor: '#22d17b0c', fill: true, tension: .4,
-            pointBackgroundColor: s.map(r => r.status === 'FAIL' ? '#f25f5c' : '#22d17b'),
-            pointRadius: 3, pointHoverRadius: 5, borderWidth: 1.5,
+            borderColor: CHART_COLORS.pass,
+            backgroundColor: CHART_COLORS.passFill,
+            fill: true,
+            tension: .35,
+            pointBackgroundColor: s.map(r => r.status === 'FAIL' ? CHART_COLORS.fail : CHART_COLORS.pass),
+            pointBorderColor: '#0e0f13',
+            pointBorderWidth: 1.5,
+            pointRadius: isTrendsView ? 4 : 3,
+            pointHoverRadius: isTrendsView ? 6 : 5,
+            borderWidth: isTrendsView ? 2 : 1.5,
           },
           {
             label: `Threshold ${thr}%`,
             data: s.map(() => thr),
-            borderColor: '#f5c54266', borderDash: [4, 4], borderWidth: 1, pointRadius: 0, fill: false,
+            borderColor: `${CHART_COLORS.flaky}99`, borderDash: [4, 4], borderWidth: 1, pointRadius: 0, fill: false,
           },
         ],
       },
@@ -521,6 +557,95 @@ const ChartModule = {
 
   failures(runs, id = 'chart-failures') {
     const s = [...runs].sort((a, b) => a._dateMs - b._dateMs).slice(-40);
+    const isTrendsView = id === 'chart-failures-full';
+    if (isTrendsView) {
+      const totals = s.map(r => Math.max(1, (r.passed || 0) + (r.failed || 0) + (r.flaky || 0) + (r.skipped || 0)));
+      const asPct = (value, idx) => +((value / totals[idx]) * 100).toFixed(1);
+      this.create(id, {
+        type: 'bar',
+        data: {
+          labels: this.labels(s),
+          datasets: [
+            {
+              label: 'Passed',
+              data: s.map((r, i) => asPct(r.passed || 0, i)),
+              backgroundColor: CHART_COLORS.passFill,
+              borderColor: CHART_COLORS.pass,
+              borderWidth: 1,
+              borderRadius: 3,
+              borderSkipped: false,
+              stack: 'outcomes',
+            },
+            {
+              label: 'Failed',
+              data: s.map((r, i) => asPct(r.failed || 0, i)),
+              backgroundColor: CHART_COLORS.failFill,
+              borderColor: CHART_COLORS.fail,
+              borderWidth: 1,
+              borderRadius: 3,
+              borderSkipped: false,
+              stack: 'outcomes',
+            },
+            {
+              label: 'Flaky',
+              data: s.map((r, i) => asPct(r.flaky || 0, i)),
+              backgroundColor: CHART_COLORS.flakyFill,
+              borderColor: CHART_COLORS.flaky,
+              borderWidth: 1,
+              borderRadius: 3,
+              borderSkipped: false,
+              stack: 'outcomes',
+            },
+            {
+              label: 'Skipped',
+              data: s.map((r, i) => asPct(r.skipped || 0, i)),
+              backgroundColor: CHART_COLORS.skippedFill,
+              borderColor: CHART_COLORS.skipped,
+              borderWidth: 1,
+              borderRadius: 3,
+              borderSkipped: false,
+              stack: 'outcomes',
+            },
+          ],
+        },
+        options: {
+          ...CHART_DEFAULTS,
+          responsive: true,
+          plugins: {
+            ...CHART_DEFAULTS.plugins,
+            tooltip: {
+              ...CHART_DEFAULTS.plugins.tooltip,
+              callbacks: {
+                title: this.ttTitle(s),
+                label: ctx => {
+                  const run = s[ctx.dataIndex];
+                  const countMap = {
+                    Passed: run.passed || 0,
+                    Failed: run.failed || 0,
+                    Flaky: run.flaky || 0,
+                    Skipped: run.skipped || 0,
+                  };
+                  const count = countMap[ctx.dataset.label] ?? 0;
+                  return `${ctx.dataset.label}: ${ctx.formattedValue}% (${count})`;
+                },
+              },
+            },
+          },
+          scales: {
+            ...CHART_DEFAULTS.scales,
+            x: { ...CHART_DEFAULTS.scales.x, stacked: true },
+            y: {
+              ...CHART_DEFAULTS.scales.y,
+              stacked: true,
+              min: 0,
+              max: 100,
+              ticks: { ...CHART_DEFAULTS.scales.y.ticks, callback: v => `${v}%` },
+            },
+          },
+        },
+      });
+      return;
+    }
     this.create(id, {
       type: 'bar',
       data: {
@@ -528,8 +653,8 @@ const ChartModule = {
         datasets: [{
           label: 'Failures',
           data: s.map(r => r.failed),
-          backgroundColor: s.map(r => r.failed > 0 ? '#f25f5c44' : '#22d17b22'),
-          borderColor: s.map(r => r.failed > 0 ? '#f25f5c' : '#22d17b'),
+          backgroundColor: s.map(r => r.failed > 0 ? CHART_COLORS.failFill : CHART_COLORS.passFill),
+          borderColor: s.map(r => r.failed > 0 ? CHART_COLORS.fail : CHART_COLORS.pass),
           borderWidth: 1, borderRadius: 3,
         }],
       },
@@ -543,13 +668,74 @@ const ChartModule = {
 
   flaky(runs, id = 'chart-flaky') {
     const s = [...runs].sort((a, b) => a._dateMs - b._dateMs).slice(-40);
+    const isTrendsView = id === 'chart-flaky-full';
+    if (isTrendsView) {
+      this.create(id, {
+        type: 'bar',
+        data: {
+          labels: this.labels(s),
+          datasets: [
+            {
+              type: 'bar',
+              label: 'Failed',
+              data: s.map(r => r.failed || 0),
+              backgroundColor: CHART_COLORS.failFill,
+              borderColor: CHART_COLORS.fail,
+              borderWidth: 1,
+              borderRadius: 3,
+              yAxisID: 'y',
+            },
+            {
+              type: 'line',
+              label: 'Flaky',
+              data: s.map(r => r.flaky || 0),
+              borderColor: CHART_COLORS.flaky,
+              backgroundColor: CHART_COLORS.flakyFill,
+              pointBackgroundColor: CHART_COLORS.flaky,
+              pointBorderColor: '#0e0f13',
+              pointBorderWidth: 1.5,
+              pointRadius: 4,
+              pointHoverRadius: 6,
+              borderWidth: 2,
+              tension: .35,
+              yAxisID: 'y',
+            },
+            {
+              type: 'line',
+              label: 'Skipped',
+              data: s.map(r => r.skipped || 0),
+              borderColor: CHART_COLORS.skipped,
+              backgroundColor: CHART_COLORS.skippedFill,
+              pointBackgroundColor: CHART_COLORS.skipped,
+              pointBorderColor: '#0e0f13',
+              pointBorderWidth: 1.5,
+              pointRadius: 3,
+              pointHoverRadius: 5,
+              borderWidth: 1.5,
+              tension: .35,
+              yAxisID: 'y',
+            },
+          ],
+        },
+        options: {
+          ...CHART_DEFAULTS,
+          responsive: true,
+          plugins: { ...CHART_DEFAULTS.plugins, tooltip: { ...CHART_DEFAULTS.plugins.tooltip, callbacks: { title: this.ttTitle(s) } } },
+          scales: {
+            ...CHART_DEFAULTS.scales,
+            y: { ...CHART_DEFAULTS.scales.y, ticks: { ...CHART_DEFAULTS.scales.y.ticks, stepSize: 1, precision: 0 } },
+          },
+        },
+      });
+      return;
+    }
     this.create(id, {
       type: 'bar',
       data: {
         labels: this.labels(s),
         datasets: [{
           label: 'Flaky', data: s.map(r => r.flaky || 0),
-          backgroundColor: '#f9731633', borderColor: '#f97316', borderWidth: 1, borderRadius: 3,
+          backgroundColor: CHART_COLORS.flakyFill, borderColor: CHART_COLORS.flaky, borderWidth: 1, borderRadius: 3,
         }],
       },
       options: {
@@ -571,8 +757,8 @@ const ChartModule = {
         datasets: [
           {
             label: 'Duration (min)', data: s.map(r => +r.durationMin.toFixed(2)),
-            borderColor: '#4f8ef7', backgroundColor: '#4f8ef70a', fill: true, tension: .4,
-            pointRadius: 2, pointHoverRadius: 5, borderWidth: 1.5,
+            borderColor: CHART_COLORS.duration, backgroundColor: CHART_COLORS.durationFill, fill: true, tension: .35,
+            pointRadius: 3, pointHoverRadius: 5, borderWidth: 2,
           },
           {
             label: `Avg ${Utils.formatDuration(avg)}`, data: s.map(() => +avg.toFixed(2)),
@@ -832,6 +1018,67 @@ const ExecutiveModule = {
 };
 
 const LastRunModule = {
+  buildContent(target) {
+    if (!target) return '';
+    const approval = target.status === 'PASS' && (target.flaky || 0) === 0
+      ? 'Go for release approval'
+      : target.status === 'PASS'
+        ? 'Review flaky signals before approval'
+        : 'Do not approve release yet';
+    const failedTests = (target.failedTests || []).slice(0, 6);
+    const links = `
+      <div class="links-cell">
+        ${target.reportUrl ? `<a href="${Utils.escape(target.reportUrl)}" target="_blank" class="link-btn">Report</a>` : `<span class="link-btn disabled">Report</span>`}
+        ${target.allureUrl ? `<a href="${Utils.escape(target.allureUrl)}" target="_blank" class="link-btn">Allure</a>` : `<span class="link-btn disabled">Allure</span>`}
+      </div>`;
+
+    return `
+      <div class="last-run-modal-grid">
+        <div class="last-run-modal-hero">
+          <div class="hero-kicker">Approval Snapshot</div>
+          <div class="hero-title">Run #${Utils.escape(String(target.runNumber ?? '—'))}</div>
+          <div class="hero-text">${Utils.escape(target.branch || 'unknown branch')} · ${Utils.escape(target.env || 'unknown env')} · ${Utils.escape(target.testType || 'unknown tag')} · ${target.formattedDate}</div>
+          <div class="last-run-approval ${target.status === 'PASS' && (target.flaky || 0) === 0 ? 'good' : target.status === 'PASS' ? 'warn' : 'bad'}">${approval}</div>
+        </div>
+        <div class="last-run-modal-stats">
+          <div class="last-run-modal-stat"><span>Pass rate</span><strong>${Utils.pct(target.passRate)}</strong></div>
+          <div class="last-run-modal-stat"><span>Passed</span><strong>${target.passed}</strong></div>
+          <div class="last-run-modal-stat"><span>Failed</span><strong>${target.failed}</strong></div>
+          <div class="last-run-modal-stat"><span>Skipped</span><strong>${target.skipped}</strong></div>
+          <div class="last-run-modal-stat"><span>Flaky</span><strong>${target.flaky || 0}</strong></div>
+          <div class="last-run-modal-stat"><span>Duration</span><strong>${Utils.formatDuration(target.durationMin)}</strong></div>
+        </div>
+      </div>
+      <div class="last-run-modal-section">
+        <div class="section-hd">
+          <div class="section-title"><span class="section-title-dot"></span>Release Decision Support</div>
+          ${links}
+        </div>
+        <div class="last-run-modal-notes">
+          <div class="hero-bullet">Status is <strong>${target.status}</strong> against the current release threshold of ${State.passThreshold}%.</div>
+          <div class="hero-bullet">${target.failed > 0 ? `${target.failed} failing tests require resolution or explicit sign-off.` : 'No failing tests were recorded in the latest run.'}</div>
+          <div class="hero-bullet">${(target.flaky || 0) > 0 ? `${target.flaky} flaky tests were detected and should be reviewed for release confidence.` : 'No flaky tests were recorded in the latest run.'}</div>
+        </div>
+      </div>
+      <div class="last-run-modal-section">
+        <div class="section-hd">
+          <div class="section-title"><span class="section-title-dot"></span>Latest Failures</div>
+          <span class="section-sub">${failedTests.length} shown</span>
+        </div>
+        ${failedTests.length
+          ? failedTests.map(test => `
+            <div class="failing-item">
+              <div class="failing-rank hot">!</div>
+              <div style="flex:1;min-width:0">
+                <div class="failing-name">${Utils.escape(test.name || 'Unnamed failure')}</div>
+                <div class="failing-file">${Utils.escape(test.classname || 'No file path')}</div>
+                ${test.failureMessage ? `<div class="failing-msg">${Utils.escape(String(test.failureMessage).split('\n')[0])}</div>` : ''}
+              </div>
+            </div>`).join('')
+          : `<div class="failing-empty">No per-test failures were attached to the latest run</div>`}
+      </div>`;
+  },
+
   render(runs) {
     const panel = document.getElementById('last-run-panel');
     if (!panel) return;
@@ -888,65 +1135,7 @@ const LastRunModule = {
     if (!modal || !body) return;
     const target = run || [...State.filteredRuns].sort((a, b) => b._dateMs - a._dateMs)[0];
     if (!target) return;
-
-    const approval = target.status === 'PASS' && (target.flaky || 0) === 0
-      ? 'Go for release approval'
-      : target.status === 'PASS'
-        ? 'Review flaky signals before approval'
-        : 'Do not approve release yet';
-    const failedTests = (target.failedTests || []).slice(0, 6);
-    const links = `
-      <div class="links-cell">
-        ${target.reportUrl ? `<a href="${Utils.escape(target.reportUrl)}" target="_blank" class="link-btn">Report</a>` : `<span class="link-btn disabled">Report</span>`}
-        ${target.allureUrl ? `<a href="${Utils.escape(target.allureUrl)}" target="_blank" class="link-btn">Allure</a>` : `<span class="link-btn disabled">Allure</span>`}
-      </div>`;
-
-    body.innerHTML = `
-      <div class="last-run-modal-grid">
-        <div class="last-run-modal-hero">
-          <div class="hero-kicker">Approval Snapshot</div>
-          <div class="hero-title">Run #${Utils.escape(String(target.runNumber ?? '—'))}</div>
-          <div class="hero-text">${Utils.escape(target.branch || 'unknown branch')} · ${Utils.escape(target.env || 'unknown env')} · ${Utils.escape(target.testType || 'unknown tag')} · ${target.formattedDate}</div>
-          <div class="last-run-approval ${target.status === 'PASS' && (target.flaky || 0) === 0 ? 'good' : target.status === 'PASS' ? 'warn' : 'bad'}">${approval}</div>
-        </div>
-        <div class="last-run-modal-stats">
-          <div class="last-run-modal-stat"><span>Pass rate</span><strong>${Utils.pct(target.passRate)}</strong></div>
-          <div class="last-run-modal-stat"><span>Passed</span><strong>${target.passed}</strong></div>
-          <div class="last-run-modal-stat"><span>Failed</span><strong>${target.failed}</strong></div>
-          <div class="last-run-modal-stat"><span>Skipped</span><strong>${target.skipped}</strong></div>
-          <div class="last-run-modal-stat"><span>Flaky</span><strong>${target.flaky || 0}</strong></div>
-          <div class="last-run-modal-stat"><span>Duration</span><strong>${Utils.formatDuration(target.durationMin)}</strong></div>
-        </div>
-      </div>
-      <div class="last-run-modal-section">
-        <div class="section-hd">
-          <div class="section-title"><span class="section-title-dot"></span>Release Decision Support</div>
-          ${links}
-        </div>
-        <div class="last-run-modal-notes">
-          <div class="hero-bullet">Status is <strong>${target.status}</strong> against the current release threshold of ${State.passThreshold}%.</div>
-          <div class="hero-bullet">${target.failed > 0 ? `${target.failed} failing tests require resolution or explicit sign-off.` : 'No failing tests were recorded in the latest run.'}</div>
-          <div class="hero-bullet">${(target.flaky || 0) > 0 ? `${target.flaky} flaky tests were detected and should be reviewed for release confidence.` : 'No flaky tests were recorded in the latest run.'}</div>
-        </div>
-      </div>
-      <div class="last-run-modal-section">
-        <div class="section-hd">
-          <div class="section-title"><span class="section-title-dot"></span>Latest Failures</div>
-          <span class="section-sub">${failedTests.length} shown</span>
-        </div>
-        ${failedTests.length
-          ? failedTests.map(test => `
-            <div class="failing-item">
-              <div class="failing-rank hot">!</div>
-              <div style="flex:1;min-width:0">
-                <div class="failing-name">${Utils.escape(test.name || 'Unnamed failure')}</div>
-                <div class="failing-file">${Utils.escape(test.classname || 'No file path')}</div>
-                ${test.failureMessage ? `<div class="failing-msg">${Utils.escape(String(test.failureMessage).split('\n')[0])}</div>` : ''}
-              </div>
-            </div>`).join('')
-          : `<div class="failing-empty">No per-test failures were attached to the latest run</div>`}
-      </div>`;
-
+    body.innerHTML = this.buildContent(target);
     modal.classList.add('open');
   },
 
@@ -1185,6 +1374,966 @@ const ExportModule = {
   },
 };
 
+const ExportImageModule = {
+  safeName(name) {
+    return String(name || 'export')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'export';
+  },
+
+  downloadDataUrl(dataUrl, filename) {
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = `${filename}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  },
+
+  replaceCanvases(source, clone) {
+    const srcCanvases = source.querySelectorAll('canvas');
+    const cloneCanvases = clone.querySelectorAll('canvas');
+    cloneCanvases.forEach((canvas, index) => {
+      const src = srcCanvases[index];
+      if (!src) return;
+      const img = document.createElement('img');
+      img.src = src.toDataURL('image/png');
+      img.style.width = `${src.clientWidth || src.width}px`;
+      img.style.height = `${src.clientHeight || src.height}px`;
+      img.style.display = 'block';
+      img.style.maxWidth = '100%';
+      canvas.replaceWith(img);
+    });
+  },
+
+  async nodeToPng(node, filename) {
+    if (typeof window.html2canvas !== 'function') {
+      throw new Error('html2canvas not loaded');
+    }
+
+    const canvas = await window.html2canvas(node, {
+      backgroundColor: '#0e0f13',
+      scale: window.devicePixelRatio > 1 ? 2 : 1,
+      useCORS: true,
+      logging: false,
+      onclone: clonedDoc => {
+        clonedDoc.querySelectorAll('.btn-export-image').forEach(btn => btn.remove());
+      },
+    });
+
+    this.downloadDataUrl(canvas.toDataURL('image/png'), filename);
+  },
+
+  async downloadCard(button) {
+    const target = document.getElementById(button.dataset.exportTarget);
+    if (!target) return;
+    button.disabled = true;
+    const original = button.textContent;
+    button.textContent = 'Exporting...';
+    try {
+      await this.nodeToPng(target, button.dataset.exportFilename || 'dashboard-export');
+    } catch (e) {
+      console.error('Export failed', e, target);
+      alert('Could not export this section as an image.');
+    } finally {
+      button.disabled = false;
+      button.textContent = original;
+    }
+  },
+
+  ensureId(node, fallback) {
+    if (!node.id) node.id = fallback;
+    return node.id;
+  },
+
+  attachButton(card, filename, label) {
+    if (card.dataset.exportEnhanced === 'true') return;
+    const header = card.querySelector('.section-hd, .table-toolbar, .failing-card-hd');
+    if (!header) return;
+    const targetId = this.ensureId(card, `export-${filename}`);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-export-image';
+    btn.textContent = 'Download PNG';
+    btn.dataset.exportTarget = targetId;
+    btn.dataset.exportFilename = filename;
+    btn.setAttribute('aria-label', `Download ${label} as image`);
+    btn.addEventListener('click', () => this.downloadCard(btn));
+
+    let actions = header.querySelector('.section-actions');
+    if (!actions) {
+      actions = document.createElement('div');
+      actions.className = 'section-actions';
+      header.appendChild(actions);
+    }
+    actions.appendChild(btn);
+    card.dataset.exportEnhanced = 'true';
+  },
+
+  enhance() {
+    document.querySelectorAll('.chart-card, .chart-card-full, .breakdown-card, .failing-card, .table-card').forEach((card, index) => {
+      const title = card.querySelector('.section-title')?.textContent?.trim() || `section-${index + 1}`;
+      const filename = this.safeName(title);
+      this.attachButton(card, filename, title);
+    });
+  },
+};
+
+const ReportModule = {
+  palette: {
+    bg: [235, 240, 246],
+    panel: [248, 250, 252],
+    panelSoft: [220, 228, 240],
+    text: [27, 36, 58],
+    muted: [95, 107, 128],
+    blue: [73, 104, 149],
+    green: [34, 209, 123],
+    yellow: [212, 168, 74],
+    red: [242, 95, 92],
+    border: [195, 206, 223],
+    navy: [42, 56, 84],
+  },
+
+  getPdf() {
+    const ctor = window.jspdf?.jsPDF;
+    if (!ctor) throw new Error('jsPDF not loaded');
+    return new ctor({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  },
+
+  downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
+
+  savePdf(pdf, filename) {
+    const blob = pdf.output('blob');
+    this.downloadBlob(blob, filename);
+  },
+
+  async runWithButton(buttonId, task) {
+    const button = document.getElementById(buttonId);
+    const original = button?.textContent;
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Generating...';
+    }
+    try {
+      await task();
+    } catch (e) {
+      console.error('Report generation failed', e);
+      alert('Could not generate the report. Please try again.');
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = original;
+      }
+    }
+  },
+
+  currentTimestamp() {
+    return new Date().toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' });
+  },
+
+  latestRun(runs = State.filteredRuns) {
+    return [...runs].sort((a, b) => b._dateMs - a._dateMs)[0] || null;
+  },
+
+  setFill(pdf, color) {
+    pdf.setFillColor(...color);
+  },
+
+  setText(pdf, color) {
+    pdf.setTextColor(...color);
+  },
+
+  async captureNode(node) {
+    return window.html2canvas(node, {
+      backgroundColor: '#0e0f13',
+      scale: window.devicePixelRatio > 1 ? 2 : 1,
+      useCORS: true,
+      logging: false,
+      onclone: clonedDoc => {
+        clonedDoc.querySelectorAll('.btn-export-image').forEach(btn => btn.remove());
+      },
+    });
+  },
+
+  async captureClone(node, width = null) {
+    const rect = node.getBoundingClientRect();
+    const host = document.createElement('div');
+    host.style.position = 'fixed';
+    host.style.left = '-99999px';
+    host.style.top = '0';
+    host.style.padding = '16px';
+    host.style.background = '#0e0f13';
+    host.style.zIndex = '-1';
+
+    const clone = node.cloneNode(true);
+    clone.style.display = 'block';
+    clone.style.visibility = 'visible';
+    clone.style.opacity = '1';
+    clone.style.width = `${Math.ceil(width || rect.width || 820)}px`;
+    clone.querySelectorAll('.btn-export-image').forEach(btn => btn.remove());
+    ExportImageModule.replaceCanvases(node, clone);
+    host.appendChild(clone);
+    document.body.appendChild(host);
+
+    try {
+      return await this.captureNode(clone);
+    } finally {
+      document.body.removeChild(host);
+    }
+  },
+
+  addImagePage(pdf, title, subtitle, canvas) {
+    const sourceCanvas = this.trimCanvas(canvas);
+    pdf.addPage();
+    this.paintPageBackground(pdf);
+    this.setText(pdf, this.palette.text);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(18);
+    pdf.text(title, 16, 20);
+    if (subtitle) {
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      this.setText(pdf, this.palette.muted);
+      pdf.text(subtitle, 16, 27);
+    }
+
+    const pageWidth = 182;
+    const ratio = sourceCanvas.height / sourceCanvas.width;
+    const imgHeight = pageWidth * ratio;
+    const maxHeight = 250;
+    const drawHeight = Math.min(imgHeight, maxHeight);
+    const imgData = sourceCanvas.toDataURL('image/png');
+    pdf.setDrawColor(...this.palette.border);
+    pdf.setFillColor(...this.palette.panel);
+    pdf.roundedRect(14, 34, 182, Math.min(drawHeight + 12, 246), 4, 4, 'FD');
+    pdf.addImage(imgData, 'PNG', 14, 40, pageWidth, drawHeight, undefined, 'FAST');
+  },
+
+  addCanvasPageById(pdf, canvasId, title, subtitle) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !canvas.width || !canvas.height) return false;
+    this.addImagePage(pdf, title, subtitle, canvas);
+    return true;
+  },
+
+  addCanvasPanel(pdf, canvasId, title, subtitle, y, panelHeight = 108) {
+    const source = document.getElementById(canvasId);
+    if (!source || !source.width || !source.height) return false;
+    const canvas = this.trimCanvas(source);
+    const x = 14;
+    const w = 138;
+    const innerX = x + 4;
+    const innerW = w - 8;
+    const titleY = y + 10;
+    const subtitleY = y + 17;
+    const imageY = y + 24;
+    const imageH = panelHeight - 32;
+    const ratio = canvas.height / canvas.width;
+    const naturalH = innerW * ratio;
+    const drawH = Math.min(imageH, naturalH);
+    const drawW = drawH / ratio;
+    const drawX = innerX + ((innerW - drawW) / 2);
+
+    pdf.setDrawColor(...this.palette.border);
+    pdf.setFillColor(...this.palette.panel);
+    pdf.roundedRect(x, y, w, panelHeight, 4, 4, 'FD');
+    this.setText(pdf, this.palette.text);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(11);
+    pdf.text(title, x + 4, titleY);
+    if (subtitle) {
+      this.setText(pdf, this.palette.muted);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8);
+      pdf.text(subtitle, x + 4, subtitleY);
+    }
+
+    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', drawX, imageY, drawW, drawH, undefined, 'FAST');
+    return true;
+  },
+
+  trimCanvas(sourceCanvas, padding = 8) {
+    const width = sourceCanvas.width;
+    const height = sourceCanvas.height;
+    const ctx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx || !width || !height) return sourceCanvas;
+
+    const { data } = ctx.getImageData(0, 0, width, height);
+    let minX = width;
+    let minY = height;
+    let maxX = -1;
+    let maxY = -1;
+
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const alpha = data[((y * width) + x) * 4 + 3];
+        if (alpha > 8) {
+          if (x < minX) minX = x;
+          if (y < minY) minY = y;
+          if (x > maxX) maxX = x;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+
+    if (maxX === -1 || maxY === -1) return sourceCanvas;
+
+    const cropX = Math.max(0, minX - padding);
+    const cropY = Math.max(0, minY - padding);
+    const cropW = Math.min(width - cropX, (maxX - minX) + (padding * 2));
+    const cropH = Math.min(height - cropY, (maxY - minY) + (padding * 2));
+
+    const trimmed = document.createElement('canvas');
+    trimmed.width = cropW;
+    trimmed.height = cropH;
+    trimmed.getContext('2d').drawImage(
+      sourceCanvas,
+      cropX,
+      cropY,
+      cropW,
+      cropH,
+      0,
+      0,
+      cropW,
+      cropH
+    );
+    return trimmed;
+  },
+
+  async withVisiblePage(pageId, task) {
+    const page = document.getElementById(pageId);
+    if (!page) return task();
+    const wasActive = page.classList.contains('active');
+    const previous = {
+      position: page.style.position,
+      left: page.style.left,
+      top: page.style.top,
+      width: page.style.width,
+      zIndex: page.style.zIndex,
+      visibility: page.style.visibility,
+      pointerEvents: page.style.pointerEvents,
+      display: page.style.display,
+    };
+
+    if (!wasActive) {
+      page.classList.add('active');
+      page.style.position = 'fixed';
+      page.style.left = '-99999px';
+      page.style.top = '0';
+      page.style.width = '1280px';
+      page.style.zIndex = '-1';
+      page.style.visibility = 'visible';
+      page.style.opacity = '0';
+      page.style.pointerEvents = 'none';
+      page.style.display = 'block';
+    }
+
+    try {
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      return await task();
+    } finally {
+      if (!wasActive) {
+        page.classList.remove('active');
+        page.style.position = previous.position;
+        page.style.left = previous.left;
+        page.style.top = previous.top;
+        page.style.width = previous.width;
+        page.style.zIndex = previous.zIndex;
+        page.style.visibility = previous.visibility;
+        page.style.opacity = '';
+        page.style.pointerEvents = previous.pointerEvents;
+        page.style.display = previous.display;
+      }
+    }
+  },
+
+  async ensureTrendChartsReady(runs) {
+    await this.withVisiblePage('page-trends', async () => {
+      ChartModule.renderAll(runs);
+      await new Promise(resolve => setTimeout(resolve, 120));
+      ['chart-passrate-full', 'chart-failures-full', 'chart-flaky-full', 'chart-duration'].forEach(id => {
+        const chart = State.charts[id];
+        if (!chart) return;
+        chart.resize();
+        chart.update('none');
+      });
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    });
+  },
+
+  paintPageBackground(pdf) {
+    pdf.setFillColor(...this.palette.bg);
+    pdf.rect(0, 0, 210, 297, 'F');
+    pdf.setFillColor(...this.palette.panelSoft);
+    pdf.rect(0, 0, 210, 16, 'F');
+    pdf.setFillColor(...this.palette.blue);
+    pdf.rect(160, 0, 50, 297, 'F');
+    pdf.setGState?.(new pdf.GState({ opacity: 0.08 }));
+    pdf.setFillColor(...this.palette.navy);
+    pdf.circle(182, 50, 36, 'F');
+    pdf.circle(202, 120, 26, 'F');
+    pdf.setGState?.(new pdf.GState({ opacity: 1 }));
+    pdf.setFillColor(...this.palette.bg);
+    pdf.roundedRect(12, 18, 144, 266, 8, 8, 'F');
+  },
+
+  addCover(pdf, title, body, decision, options = {}) {
+    const focusLabel = options.focusLabel || 'REPORT FOCUS';
+    const reportType = options.reportType || 'Management Report';
+    const footerNote = options.footerNote || 'Prepared for management review';
+    this.paintPageBackground(pdf);
+    this.setFill(pdf, this.palette.blue);
+    pdf.roundedRect(16, 24, 62, 8, 4, 4, 'F');
+    this.setText(pdf, this.palette.panel);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(11);
+    pdf.text('ORANGEHRM QA ANALYTICS', 20, 29);
+    this.setText(pdf, this.palette.text);
+    pdf.setFontSize(28);
+    pdf.text(title, 16, 56);
+    this.setText(pdf, this.palette.muted);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(11);
+    const lines = pdf.splitTextToSize(body, 118);
+    pdf.text(lines, 16, 72);
+
+    this.setFill(pdf, this.palette.panel);
+    pdf.setDrawColor(...this.palette.border);
+    pdf.roundedRect(16, 110, 128, 42, 6, 6, 'FD');
+    this.setText(pdf, this.palette.blue);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(10);
+    pdf.text(focusLabel, 22, 123);
+    this.setText(pdf, this.palette.text);
+    pdf.setFontSize(16);
+    pdf.text(decision, 22, 137);
+
+    this.setFill(pdf, this.palette.panel);
+    pdf.setDrawColor(...this.palette.border);
+    pdf.roundedRect(16, 166, 58, 24, 5, 5, 'FD');
+    pdf.roundedRect(80, 166, 64, 24, 5, 5, 'FD');
+    this.setText(pdf, this.palette.muted);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.text('REPORT TYPE', 22, 175);
+    pdf.text('GENERATED', 86, 175);
+    this.setText(pdf, this.palette.text);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(11);
+    pdf.text(reportType, 22, 185);
+    pdf.text(this.currentTimestamp(), 86, 185);
+
+    this.setText(pdf, this.palette.panel);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(18);
+    pdf.text('Release', 164, 44);
+    pdf.text('Approval', 164, 54);
+    pdf.text('Report', 164, 64);
+    this.setText(pdf, this.palette.muted);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(10);
+    pdf.text(footerNote, 16, 210);
+  },
+
+  decisionMeta(run) {
+    if (!run) return { text: 'No latest run available for approval review.', color: this.palette.muted, short: 'NO DATA' };
+    if (run.status === 'PASS' && (run.flaky || 0) === 0) return { text: 'Recommendation: GO for release approval.', color: this.palette.green, short: 'GO' };
+    if (run.status === 'PASS') return { text: 'Recommendation: GO with caution. Review flaky signals before approval.', color: this.palette.yellow, short: 'CAUTION' };
+    return { text: 'Recommendation: NO GO until latest failures are resolved.', color: this.palette.red, short: 'NO GO' };
+  },
+
+  addSectionHeading(pdf, title, y) {
+    this.setText(pdf, this.palette.blue);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(13);
+    pdf.text(title, 14, y);
+  },
+
+  addMetricCard(pdf, x, y, w, h, label, value, color = this.palette.text) {
+    this.setFill(pdf, this.palette.panel);
+    pdf.setDrawColor(...this.palette.border);
+    pdf.roundedRect(x, y, w, h, 4, 4, 'FD');
+    this.setText(pdf, this.palette.muted);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.text(label.toUpperCase(), x + 4, y + 7);
+    this.setText(pdf, color);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(18);
+    pdf.text(String(value), x + 4, y + 18);
+  },
+
+  addBodyPage(pdf, heading) {
+    pdf.addPage();
+    this.paintPageBackground(pdf);
+    this.addSectionHeading(pdf, heading, 20);
+  },
+
+  addInsightBlock(pdf, x, y, w, h, title, value, body, tone = this.palette.text) {
+    this.setFill(pdf, this.palette.panel);
+    pdf.setDrawColor(...this.palette.border);
+    pdf.roundedRect(x, y, w, h, 4, 4, 'FD');
+    this.setText(pdf, this.palette.blue);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(8);
+    pdf.text(String(title).toUpperCase(), x + 4, y + 7);
+    this.setText(pdf, tone);
+    pdf.setFontSize(14);
+    pdf.text(String(value), x + 4, y + 17);
+    this.addWrappedText(pdf, body, x + 4, y + 25, w - 8, this.palette.muted, 9);
+  },
+
+  addWrappedText(pdf, text, x, y, width, color = this.palette.muted, size = 10) {
+    this.setText(pdf, color);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(size);
+    const lines = pdf.splitTextToSize(text, width);
+    pdf.text(lines, x, y);
+    return y + (lines.length * (size * 0.45 + 2));
+  },
+
+  approvalDecision(run) {
+    return this.decisionMeta(run).text;
+  },
+
+  async downloadOverall() {
+    await this.runWithButton('report-overall-btn', async () => {
+      const pdf = this.getPdf();
+      const latest = this.latestRun();
+      const summary = AnalyticsModule.summarize(State.filteredRuns);
+      await this.ensureTrendChartsReady(State.filteredRuns);
+      this.addCover(
+        pdf,
+        'Overall Automation Report',
+        'This report is designed for management and HOD review. It summarizes overall automation execution health, recent trends, risk concentration, and the latest run summary across the selected reporting scope.',
+        'Automation Health Summary',
+        {
+          focusLabel: 'REPORT FOCUS',
+          reportType: 'Automation Summary',
+          footerNote: 'Prepared for automation performance and trend review',
+        }
+      );
+
+      this.addBodyPage(pdf, 'Executive Summary');
+      const statusTone = summary.decisionTone === 'good'
+        ? this.palette.green
+        : summary.decisionTone === 'warn'
+          ? this.palette.yellow
+          : this.palette.red;
+      this.setFill(pdf, this.palette.panel);
+      pdf.setDrawColor(...this.palette.border);
+      pdf.roundedRect(14, 28, 182, 30, 5, 5, 'FD');
+      this.setText(pdf, this.palette.blue);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(9);
+      pdf.text('AUTOMATION HEALTH', 20, 38);
+      this.setText(pdf, statusTone);
+      pdf.setFontSize(22);
+      pdf.text(summary.releaseStatus, 20, 52);
+      this.setText(pdf, this.palette.muted);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      pdf.text(`Report scope: ${State.filteredRuns.length} runs across the current dashboard filters.`, 110, 38);
+      pdf.text(`Latest run: #${latest?.runNumber ?? '-'} | ${latest?.testType || 'Unknown tag'} | ${latest?.env || 'Unknown env'}`, 110, 46);
+
+      this.addMetricCard(pdf, 14, 68, 42, 26, 'Release Score', summary.releaseScore, statusTone);
+      this.addMetricCard(pdf, 60, 68, 42, 26, 'Avg Pass Rate', Utils.pct(summary.avgPass), this.palette.green);
+      this.addMetricCard(pdf, 106, 68, 42, 26, 'Failing Runs', summary.failingRuns, summary.failingRuns > 0 ? this.palette.red : this.palette.text);
+      this.addMetricCard(pdf, 152, 68, 44, 26, 'Flaky Count', summary.totalFlaky, summary.totalFlaky > 0 ? this.palette.yellow : this.palette.text);
+      this.addMetricCard(pdf, 14, 98, 42, 26, 'Total Runs', State.filteredRuns.length, this.palette.text);
+      this.addMetricCard(pdf, 60, 98, 42, 26, 'Avg Failures', summary.avgFailures.toFixed(1), summary.avgFailures > 0 ? this.palette.red : this.palette.text);
+      this.addMetricCard(pdf, 106, 98, 42, 26, 'Critical Fails', summary.criticalFailingRuns, summary.criticalFailingRuns > 0 ? this.palette.red : this.palette.text);
+      this.addMetricCard(pdf, 152, 98, 44, 26, 'Latest Status', latest?.status || 'N/A', latest?.status === 'PASS' ? this.palette.green : this.palette.red);
+
+      this.addInsightBlock(
+        pdf,
+        14,
+        138,
+        56,
+        42,
+        'Trend Movement',
+        summary.passDelta == null ? 'Baseline' : `${Utils.deltaLabel(summary.passDelta)} pass`,
+        summary.failureDelta == null
+          ? 'Historical comparison is still forming for this reporting window.'
+          : `Average failures per run moved ${Utils.deltaLabel(summary.failureDelta, '')} compared with the previous window.`,
+        summary.passDelta >= 0 ? this.palette.green : this.palette.red
+      );
+      this.addInsightBlock(
+        pdf,
+        77,
+        138,
+        56,
+        42,
+        'Failure Driver',
+        summary.topCategory?.label || 'No active driver',
+        summary.topCategory
+          ? `${summary.topCategory.count} logged failures mapped to this category in the current view.`
+          : 'No failure category pattern stands out in the selected runs.',
+        this.palette.yellow
+      );
+      this.addInsightBlock(
+        pdf,
+        140,
+        138,
+        56,
+        42,
+        'Hot Module',
+        summary.topModule?.label || 'No repeated hotspot',
+        summary.topModule
+          ? `${Math.round(summary.moduleShare)}% of repeated module-linked failures come from this module.`
+          : 'No single module is repeating enough to stand out.',
+        this.palette.red
+      );
+
+      this.addBodyPage(pdf, 'Latest Run Summary');
+      this.setFill(pdf, this.palette.panel);
+      pdf.setDrawColor(...this.palette.border);
+      pdf.roundedRect(14, 28, 182, 32, 5, 5, 'FD');
+      this.setText(pdf, this.palette.blue);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(9);
+      pdf.text(`LATEST ${Utils.titleCase(latest?.testType || 'Selected')} RUN`, 20, 39);
+      this.setText(pdf, latest?.status === 'PASS' ? this.palette.green : this.palette.red);
+      pdf.setFontSize(18);
+      pdf.text(latest?.status === 'PASS' ? 'Latest Run Stable' : 'Latest Run Needs Attention', 20, 52);
+      this.setText(pdf, this.palette.muted);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      pdf.text(`Run #${latest?.runNumber ?? '-'} | ${latest?.branch || 'Unknown branch'} | ${latest?.env || 'Unknown env'}`, 110, 40);
+      pdf.text(`${latest?.formattedDate || 'Unknown date'} | ${latest?.testType || 'Unknown tag'}`, 110, 48);
+
+      this.addMetricCard(pdf, 14, 70, 42, 26, 'Pass Rate', Utils.pct(latest?.passRate || 0), this.palette.green);
+      this.addMetricCard(pdf, 60, 70, 42, 26, 'Failures', latest?.failed || 0, (latest?.failed || 0) > 0 ? this.palette.red : this.palette.text);
+      this.addMetricCard(pdf, 106, 70, 42, 26, 'Flaky', latest?.flaky || 0, (latest?.flaky || 0) > 0 ? this.palette.yellow : this.palette.text);
+      this.addMetricCard(pdf, 152, 70, 44, 26, 'Duration', Utils.formatDuration(latest?.durationMin || 0), this.palette.text);
+
+      let overallY = 114;
+      overallY = this.addWrappedText(
+        pdf,
+        latest?.status === 'PASS' && (latest?.flaky || 0) === 0
+          ? 'The latest selected run passed cleanly with no flaky exposure and reflects stable execution behavior.'
+          : latest?.status === 'PASS'
+            ? 'The latest selected run passed, but flaky exposure remains part of the current stability picture.'
+            : 'The latest selected run failed and should be highlighted as part of the current automation risk picture.',
+        18,
+        overallY,
+        174,
+        this.palette.text,
+        10
+      );
+      overallY = this.addWrappedText(
+        pdf,
+        summary.criticalFailingRuns > 0
+          ? `${summary.criticalFailingRuns} critical-tag runs failed in the current view, which raises automation risk in this reporting period.`
+          : 'No critical-tag failures were observed in the selected reporting scope.',
+        18,
+        overallY + 5,
+        174
+      );
+      overallY = this.addWrappedText(
+        pdf,
+        summary.topCategory
+          ? `${summary.topCategory.label} is the leading failure category, while ${summary.topModule?.label || 'the current module set'} remains the main hotspot.`
+          : 'No strong failure concentration was detected across the selected runs.',
+        18,
+        overallY + 5,
+        174
+      );
+
+      this.addBodyPage(pdf, 'Trend Appendix');
+      this.addWrappedText(
+        pdf,
+        'Recent automation trends across the selected reporting scope.',
+        18,
+        34,
+        120,
+        this.palette.muted,
+        10
+      );
+      this.addCanvasPanel(pdf, 'chart-passrate-full', 'Release Health Trend', 'Pass-rate direction across recent runs.', 48, 108);
+      this.addCanvasPanel(pdf, 'chart-failures-full', 'Run Outcome Composition', 'Share of pass, fail, flaky, and skipped outcomes.', 164, 108);
+
+      this.addBodyPage(pdf, 'Trend Appendix');
+      this.addWrappedText(
+        pdf,
+        'Execution stability and duration trends.',
+        18,
+        34,
+        120,
+        this.palette.muted,
+        10
+      );
+      this.addCanvasPanel(pdf, 'chart-flaky-full', 'Risk Signals Trend', 'Recent instability signals, including flaky and failed behavior.', 48, 108);
+      this.addCanvasPanel(pdf, 'chart-duration', 'Execution Duration Trend', 'Average run duration across the current reporting window.', 164, 108);
+
+      this.savePdf(pdf, `overall-release-report-${new Date().toISOString().slice(0, 10)}.pdf`);
+    });
+  },
+
+  async downloadLastRun() {
+    await this.runWithButton('report-last-run-btn', async () => {
+      const latest = this.latestRun();
+      if (!latest) throw new Error('No latest run available');
+      await this.ensureTrendChartsReady(State.filteredRuns);
+      const pdf = this.getPdf();
+      const decision = this.decisionMeta(latest);
+      const buildSafeLastRunReport = () => {
+        this.addCover(
+          pdf,
+          'Last Run Approval Report',
+          'This report focuses on the latest selected run and is intended to support an explicit management go / no-go approval decision.',
+          decision.text,
+          {
+            focusLabel: 'RELEASE DECISION',
+            reportType: 'Approval Pack',
+            footerNote: 'Prepared for management go / no-go review',
+          }
+        );
+
+        pdf.addPage();
+        this.paintPageBackground(pdf);
+        this.addSectionHeading(pdf, 'Approval Summary', 18);
+        this.setFill(pdf, this.palette.panelSoft);
+        pdf.roundedRect(14, 24, 182, 22, 4, 4, 'F');
+        this.setText(pdf, decision.color);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(18);
+        pdf.text(decision.short, 20, 38);
+        this.setText(pdf, this.palette.muted);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(10);
+        pdf.text(`Run #${latest.runNumber} | ${latest.branch || 'Unknown branch'} | ${latest.env || 'Unknown env'} | ${latest.testType || 'Unknown tag'}`, 55, 38);
+
+        const statusColor = latest.status === 'PASS' ? this.palette.green : this.palette.red;
+        this.addMetricCard(pdf, 14, 56, 42, 26, 'Status', latest.status, statusColor);
+        this.addMetricCard(pdf, 60, 56, 42, 26, 'Pass Rate', Utils.pct(latest.passRate), this.palette.green);
+        this.addMetricCard(pdf, 106, 56, 42, 26, 'Failures', latest.failed, latest.failed > 0 ? this.palette.red : this.palette.text);
+        this.addMetricCard(pdf, 152, 56, 44, 26, 'Flaky', latest.flaky || 0, (latest.flaky || 0) > 0 ? this.palette.yellow : this.palette.text);
+        this.addMetricCard(pdf, 14, 86, 42, 26, 'Passed', latest.passed, this.palette.text);
+        this.addMetricCard(pdf, 60, 86, 42, 26, 'Skipped', latest.skipped, this.palette.muted);
+        this.addMetricCard(pdf, 106, 86, 42, 26, 'Duration', Utils.formatDuration(latest.durationMin), this.palette.text);
+        this.addMetricCard(pdf, 152, 86, 44, 26, 'Run ID', `#${latest.runNumber}`, this.palette.blue);
+
+        this.addSectionHeading(pdf, 'Decision Notes', 128);
+        let noteY = 138;
+        noteY = this.addWrappedText(pdf, latest.status === 'PASS'
+          ? 'The latest run met the current dashboard pass threshold.'
+          : 'The latest run did not meet the current dashboard pass threshold.', 18, noteY, 174);
+        noteY = this.addWrappedText(pdf, latest.failed > 0
+          ? `${latest.failed} failing tests need resolution or explicit management acceptance before approval.`
+          : 'No failing tests were logged in the latest run.', 18, noteY + 2, 174);
+        noteY = this.addWrappedText(pdf, (latest.flaky || 0) > 0
+          ? `${latest.flaky} flaky tests were detected and should be reviewed as a release-confidence risk.`
+          : 'No flaky tests were detected in the latest run.', 18, noteY + 2, 174);
+
+        if (latest.failedTests?.length) {
+          this.addSectionHeading(pdf, 'Top Attached Failures', noteY + 12);
+          let fy = noteY + 22;
+          latest.failedTests.slice(0, 4).forEach((test, idx) => {
+            this.setFill(pdf, this.palette.panel);
+            pdf.roundedRect(14, fy - 5, 182, 18, 3, 3, 'F');
+            this.setText(pdf, this.palette.red);
+            pdf.setFont('helvetica', 'bold');
+            pdf.setFontSize(9);
+            pdf.text(`${idx + 1}. ${String(test.name || 'Unnamed failure').slice(0, 86)}`, 18, fy + 2);
+            this.setText(pdf, this.palette.muted);
+            pdf.setFont('helvetica', 'normal');
+            pdf.setFontSize(8);
+            pdf.text(String(test.classname || 'No file path').slice(0, 96), 18, fy + 9);
+            fy += 22;
+          });
+        }
+
+        pdf.addPage();
+        this.paintPageBackground(pdf);
+        this.addSectionHeading(pdf, 'Run Context', 18);
+        this.setFill(pdf, this.palette.panelSoft);
+        pdf.roundedRect(14, 26, 182, 30, 4, 4, 'F');
+        this.setText(pdf, this.palette.text);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(14);
+        pdf.text(`Latest ${Utils.titleCase(latest.testType || 'Selected')} Run`, 20, 40);
+        this.setText(pdf, this.palette.muted);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(10);
+        pdf.text(`Branch: ${latest.branch || 'Unknown branch'}`, 20, 48);
+        pdf.text(`Environment: ${latest.env || 'Unknown environment'}`, 95, 48);
+        pdf.text(`Executed: ${latest.formattedDate || 'Unknown date'}`, 20, 54);
+
+        this.addSectionHeading(pdf, 'Approval Guidance', 72);
+        let guidanceY = 82;
+        guidanceY = this.addWrappedText(
+          pdf,
+          latest.status === 'PASS' && (latest.flaky || 0) === 0
+            ? 'This run is the strongest candidate for release sign-off because it passed cleanly with no flaky exposure.'
+            : latest.status === 'PASS'
+              ? 'This run passed, but instability signals were detected. Approval should depend on whether the flaky coverage is understood and accepted.'
+              : 'This run failed. Release approval should be blocked until the open failures are resolved or explicitly accepted.',
+          18,
+          guidanceY,
+          174,
+          this.palette.text
+        );
+
+        guidanceY = this.addWrappedText(
+          pdf,
+          latest.reportUrl ? `Execution report: ${latest.reportUrl}` : 'Execution report link was not attached to this run.',
+          18,
+          guidanceY + 6,
+          174
+        );
+        guidanceY = this.addWrappedText(
+          pdf,
+          latest.allureUrl ? `Allure report: ${latest.allureUrl}` : 'Allure link was not attached to this run.',
+          18,
+          guidanceY + 4,
+          174
+        );
+
+        this.addSectionHeading(pdf, 'Failure Summary', guidanceY + 14);
+        let failureY = guidanceY + 24;
+        const failures = (latest.failedTests || []).slice(0, 6);
+        if (failures.length) {
+          failures.forEach((test, idx) => {
+            this.setFill(pdf, this.palette.panel);
+            pdf.roundedRect(14, failureY - 5, 182, 20, 3, 3, 'F');
+            this.setText(pdf, this.palette.red);
+            pdf.setFont('helvetica', 'bold');
+            pdf.setFontSize(9);
+            pdf.text(`${idx + 1}. ${String(test.name || 'Unnamed failure').slice(0, 84)}`, 18, failureY + 1);
+            this.setText(pdf, this.palette.muted);
+            pdf.setFont('helvetica', 'normal');
+            pdf.setFontSize(8);
+            pdf.text(String(test.classname || 'No file path').slice(0, 96), 18, failureY + 8);
+            if (test.failureMessage) {
+              pdf.text(String(test.failureMessage).split('\n')[0].slice(0, 110), 18, failureY + 14);
+            }
+            failureY += 24;
+          });
+        } else {
+          this.addWrappedText(pdf, 'No attached per-test failures were included with the latest run.', 18, failureY, 174);
+        }
+
+        this.addBodyPage(pdf, 'Trend Appendix');
+        this.addWrappedText(
+          pdf,
+          'Recent run-level trends for pass health and outcome composition across the selected reporting scope.',
+          18,
+          34,
+          120,
+          this.palette.muted,
+          10
+        );
+        try {
+          this.addCanvasPanel(pdf, 'chart-passrate-full', 'Pass Rate Trend', 'Recent pass performance in the selected filter window.', 48, 108);
+          this.addCanvasPanel(pdf, 'chart-failures-full', 'Outcome Composition', 'How recent runs were split across pass, fail, flaky, and skipped outcomes.', 164, 108);
+        } catch (e) {
+          console.warn('Skipping last run trend appendix', e);
+        }
+
+        this.savePdf(pdf, `last-run-approval-report-${new Date().toISOString().slice(0, 10)}.pdf`);
+      };
+      buildSafeLastRunReport();
+      return;
+
+      this.addCover(
+        pdf,
+        'Last Run Approval Report',
+        'This report focuses on the latest selected run and is intended to support an explicit management go / no-go approval decision.',
+        decision.text
+      );
+
+      pdf.addPage();
+      this.setFill(pdf, this.palette.bg);
+      pdf.rect(0, 0, 210, 297, 'F');
+      this.addSectionHeading(pdf, 'Approval Summary', 18);
+      this.setFill(pdf, this.palette.panelSoft);
+      pdf.roundedRect(14, 24, 182, 22, 4, 4, 'F');
+      this.setText(pdf, decision.color);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(18);
+      pdf.text(decision.short, 20, 38);
+      this.setText(pdf, this.palette.muted);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      pdf.text(`Run #${latest.runNumber} · ${latest.branch || 'Unknown branch'} · ${latest.env || 'Unknown env'} · ${latest.testType || 'Unknown tag'}`, 55, 38);
+
+      const statusColor = latest.status === 'PASS' ? this.palette.green : this.palette.red;
+      this.addMetricCard(pdf, 14, 56, 42, 26, 'Status', latest.status, statusColor);
+      this.addMetricCard(pdf, 60, 56, 42, 26, 'Pass Rate', Utils.pct(latest.passRate), this.palette.green);
+      this.addMetricCard(pdf, 106, 56, 42, 26, 'Failures', latest.failed, latest.failed > 0 ? this.palette.red : this.palette.text);
+      this.addMetricCard(pdf, 152, 56, 44, 26, 'Flaky', latest.flaky || 0, (latest.flaky || 0) > 0 ? this.palette.yellow : this.palette.text);
+      this.addMetricCard(pdf, 14, 86, 42, 26, 'Passed', latest.passed, this.palette.text);
+      this.addMetricCard(pdf, 60, 86, 42, 26, 'Skipped', latest.skipped, this.palette.muted);
+      this.addMetricCard(pdf, 106, 86, 42, 26, 'Duration', Utils.formatDuration(latest.durationMin), this.palette.text);
+      this.addMetricCard(pdf, 152, 86, 44, 26, 'Run ID', `#${latest.runNumber}`, this.palette.blue);
+
+      this.addSectionHeading(pdf, 'Decision Notes', 128);
+      let noteY = 138;
+      noteY = this.addWrappedText(pdf, latest.status === 'PASS'
+        ? 'The latest run met the current dashboard pass threshold.'
+        : 'The latest run did not meet the current dashboard pass threshold.', 18, noteY, 174);
+      noteY = this.addWrappedText(pdf, latest.failed > 0
+        ? `${latest.failed} failing tests need resolution or explicit management acceptance before approval.`
+        : 'No failing tests were logged in the latest run.', 18, noteY + 2, 174);
+      noteY = this.addWrappedText(pdf, (latest.flaky || 0) > 0
+        ? `${latest.flaky} flaky tests were detected and should be reviewed as a release-confidence risk.`
+        : 'No flaky tests were detected in the latest run.', 18, noteY + 2, 174);
+
+      if (latest.failedTests?.length) {
+        this.addSectionHeading(pdf, 'Top Attached Failures', noteY + 12);
+        let fy = noteY + 22;
+        latest.failedTests.slice(0, 4).forEach((test, idx) => {
+          this.setFill(pdf, this.palette.panel);
+          pdf.roundedRect(14, fy - 5, 182, 18, 3, 3, 'F');
+          this.setText(pdf, this.palette.red);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setFontSize(9);
+          pdf.text(`${idx + 1}. ${String(test.name || 'Unnamed failure').slice(0, 86)}`, 18, fy + 2);
+          this.setText(pdf, this.palette.muted);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(8);
+          pdf.text(String(test.classname || 'No file path').slice(0, 96), 18, fy + 9);
+          fy += 22;
+        });
+      }
+
+      const temp = document.createElement('div');
+      temp.innerHTML = LastRunModule.buildContent(latest);
+      const canvas = await this.captureClone(temp, 820);
+      this.addImagePage(
+        pdf,
+        `Run #${latest.runNumber} Approval Pack`,
+        `${latest.branch || 'Unknown branch'} · ${latest.env || 'Unknown env'} · ${latest.testType || 'Unknown tag'}`,
+        canvas
+      );
+
+      const trendNodes = [
+        { id: 'chart-passrate-full', title: 'Pass Rate Trend', subtitle: 'Recent pass performance in the selected filter window.' },
+        { id: 'chart-failures-full', title: 'Outcome Composition', subtitle: 'How recent runs were split across pass, fail, flaky, and skipped outcomes.' },
+      ];
+      for (const item of trendNodes) {
+        const node = document.getElementById(item.id)?.closest('.chart-card-full');
+        if (!node) continue;
+        const trendCanvas = await this.captureClone(node);
+        this.addImagePage(pdf, item.title, item.subtitle, trendCanvas);
+      }
+
+      this.savePdf(pdf, `last-run-approval-report-${new Date().toISOString().slice(0, 10)}.pdf`);
+    });
+  },
+};
+
 /* ─── Nav ─── */
 const NavModule = {
   current: 'overview',
@@ -1215,15 +2364,25 @@ const VisualsModule = {
 
 /* ─── Timer ─── */
 const TimerModule = {
+  nextMidnightDelay() {
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(24, 0, 0, 0);
+    return next.getTime() - now.getTime();
+  },
+
+  updateLabel() {
+    const el = document.getElementById('countdown');
+    if (!el) return;
+    el.textContent = 'Refresh daily at 00:00';
+  },
+
   start() {
-    clearInterval(State.refreshTimer);
-    State.countdown = 60;
-    State.refreshTimer = setInterval(() => {
-      State.countdown--;
-      const el = document.getElementById('countdown');
-      if (el) el.textContent = `Refresh in ${State.countdown}s`;
-      if (State.countdown <= 0) App.refresh();
-    }, 1000);
+    clearTimeout(State.refreshTimer);
+    this.updateLabel();
+    State.refreshTimer = setTimeout(() => {
+      App.refresh();
+    }, this.nextMidnightDelay());
   },
 };
 
@@ -1399,6 +2558,8 @@ const App = {
     this.bindClick(document.querySelector('.mobile-filter-btn'), () => MobileModule.toggleFilterSheet());
     this.bindClick(document.querySelector('#header-filters .threshold-chip'), () => MobileModule.toggleFilterSheet());
     this.bindClick(document.querySelector('.header-right .btn[title="Refresh"]'), () => this.refresh());
+    this.bindClick(document.getElementById('report-overall-btn'), () => ReportModule.downloadOverall());
+    this.bindClick(document.getElementById('report-last-run-btn'), () => ReportModule.downloadLastRun());
 
     document.querySelectorAll('button.btn').forEach(btn => {
       if (btn.textContent.includes('CSV')) {
@@ -1424,6 +2585,8 @@ const App = {
     document.querySelectorAll('.visual-tab').forEach(tab => {
       this.bindClick(tab, () => VisualsModule.show(tab.dataset.visualSection));
     });
+
+    ExportImageModule.enhance();
   },
 
   async init() {
@@ -1539,6 +2702,7 @@ const App = {
     RiskModule.renderCategoryList(runs);
     VisualsModule.show(State.visualSection);
     TableModule.render();
+    ExportImageModule.enhance();
   },
 
   updateAdvancedFilterTrigger() {
@@ -1568,6 +2732,6 @@ const App = {
   },
 };
 
-Object.assign(window, { App, MobileModule, DropdownModule, CompareModule, LastRunModule });
+Object.assign(window, { App, MobileModule, DropdownModule, CompareModule, LastRunModule, ExportImageModule, ReportModule });
 
 document.addEventListener('DOMContentLoaded', () => App.init());

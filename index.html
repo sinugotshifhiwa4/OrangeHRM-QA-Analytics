@@ -8,6 +8,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -41,14 +43,18 @@
     </div>
     <div class="nav-item" data-page="runs">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="14" y2="8"/><line x1="2" y1="12" x2="10" y2="12"/></svg>
-      All Runs
+      Run History
+    </div>
+    <div class="nav-item" data-page="reports">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 1.5h5l3.5 3.5V14a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1Z"/><path d="M9 1.5V5h3.5"/><line x1="5" y1="8" x2="11" y2="8"/><line x1="5" y1="11" x2="11" y2="11"/></svg>
+      Reports
     </div>
   </div>
   <div class="sb-footer">
     <div style="display:flex;align-items:center;margin-bottom:3px">
       <span class="live-dot"></span>Live
     </div>
-    <div id="countdown" style="color:var(--text-3)">Refresh in 60s</div>
+    <div id="countdown" style="color:var(--text-3)">Refresh daily at 00:00</div>
   </div>
 </aside>
 
@@ -215,7 +221,11 @@
     </button>
     <button class="mbn-item" data-page="runs">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="14" y2="8"/><line x1="2" y1="12" x2="10" y2="12"/></svg>
-      <span>Runs</span>
+      <span>Run History</span>
+    </button>
+    <button class="mbn-item" data-page="reports">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 1.5h5l3.5 3.5V14a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1Z"/><path d="M9 1.5V5h3.5"/><line x1="5" y1="8" x2="11" y2="8"/><line x1="5" y1="11" x2="11" y2="11"/></svg>
+      <span>Reports</span>
     </button>
   </nav>
 
@@ -258,11 +268,11 @@
         <canvas id="chart-duration" style="max-height:200px"></canvas>
       </div>
       <div class="chart-card-full">
-        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Total Failures Over Time</div></div>
+        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Run Outcome Composition</div></div>
         <canvas id="chart-failures-full" style="max-height:200px"></canvas>
       </div>
       <div class="chart-card-full">
-        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Flaky Tests Over Time</div></div>
+        <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Risk Signals Over Time</div></div>
         <canvas id="chart-flaky-full" style="max-height:200px"></canvas>
       </div>
     </div>
@@ -278,6 +288,7 @@
         </div>
         <div class="visual-tabs" id="visual-tabs">
           <button class="visual-tab active" data-visual-section="quality">Quality</button>
+          <button class="visual-tab" data-visual-section="tags">Tags</button>
           <button class="visual-tab" data-visual-section="environment">Environment</button>
           <button class="visual-tab" data-visual-section="users">Users</button>
           <button class="visual-tab" data-visual-section="failures">Failures</button>
@@ -301,17 +312,25 @@
         </div>
         <div class="breakdown-row">
           <div class="breakdown-card">
-            <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Suite Health by Tag</div></div>
-            <div id="breakdown-type"></div>
-          </div>
-          <div class="breakdown-card">
             <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Branch Readiness</div></div>
             <div id="breakdown-branch"></div>
           </div>
         </div>
         <div class="breakdown-charts">
-          <div class="chart-card-full"><div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Avg Pass Rate by Test Tag</div></div><canvas id="chart-bar-type" style="max-height:200px"></canvas></div>
           <div class="chart-card-full"><div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Avg Pass Rate by Branch</div></div><canvas id="chart-bar-branch" style="max-height:200px"></canvas></div>
+        </div>
+      </div>
+
+      <div class="visual-section" data-visual-section="tags">
+        <div class="breakdown-row breakdown-row-split">
+          <div class="breakdown-card">
+            <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Suite Health by Tag</div></div>
+            <div id="breakdown-type"></div>
+          </div>
+          <div class="chart-card-full">
+            <div class="section-hd"><div class="section-title"><span class="section-title-dot"></span>Avg Pass Rate by Test Tag</div></div>
+            <canvas id="chart-bar-type" style="max-height:200px"></canvas>
+          </div>
         </div>
       </div>
 
@@ -369,11 +388,11 @@
     </div>
   </div>
 
-  <!-- ── All Runs ── -->
+  <!-- ── Run History ── -->
   <div id="page-runs" class="page fade-in">
     <div class="table-card">
       <div class="table-toolbar">
-        <div class="section-title"><span class="section-title-dot"></span>All Runs</div>
+        <div class="section-title"><span class="section-title-dot"></span>Run History</div>
         <div style="display:flex;gap:6px;align-items:center">
           <input type="text" class="table-search" id="table-search" placeholder="Search runs…" />
           <span class="table-count" id="table-count"></span>
@@ -406,6 +425,29 @@
         <span><span class="hl" id="cmp-count">0</span> selected</span>
         <button class="btn btn-primary" id="compare-btn" onclick="CompareModule.open()">⇄ Compare</button>
         <button class="btn" onclick="CompareModule.clear()">✕ Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Reports ── -->
+  <div id="page-reports" class="page fade-in">
+    <div class="reports-shell">
+      <div class="reports-hero">
+        <div class="hero-kicker">Management Reports</div>
+        <div class="hero-title">Automation Report Packs</div>
+        <div class="hero-text">Generate management-ready PDFs for overall automation performance or for the latest run go / no-go decision.</div>
+      </div>
+      <div class="reports-grid">
+        <div class="report-card">
+          <div class="section-title"><span class="section-title-dot"></span>Overall Automation Report</div>
+          <div class="report-copy">Creates a shareable PDF of automation run health, trends, outcomes, and the latest run summary for overall programme reporting.</div>
+          <button class="btn btn-primary report-btn" id="report-overall-btn" type="button">Download Overall PDF</button>
+        </div>
+        <div class="report-card">
+          <div class="section-title"><span class="section-title-dot"></span>Last Run Approval Report</div>
+          <div class="report-copy">Creates a focused approval pack for the latest selected run with status, pass rate, failures, flaky signals, and release recommendation.</div>
+          <button class="btn btn-primary report-btn" id="report-last-run-btn" type="button">Download Last Run PDF</button>
+        </div>
       </div>
     </div>
   </div>
