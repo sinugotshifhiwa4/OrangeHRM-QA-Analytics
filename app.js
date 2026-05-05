@@ -77,6 +77,11 @@ const Utils = {
       .replace(/[-_/]+/g, ' ')
       .replace(/\b\w/g, ch => ch.toUpperCase());
   },
+  formatDateOnly(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return isNaN(d) ? String(iso) : d.toLocaleDateString('en-ZA', { dateStyle: 'medium' });
+  },
   matchesSearch(run, search) {
     if (!search) return true;
     const haystacks = [
@@ -1545,6 +1550,32 @@ const ReportModule = {
     return [...runs].sort((a, b) => b._dateMs - a._dateMs)[0] || null;
   },
 
+  scopeMeta(runs = State.filteredRuns) {
+    const sorted = [...runs].sort((a, b) => a._dateMs - b._dateMs);
+    const from = sorted[0]?.date || null;
+    const to = sorted[sorted.length - 1]?.date || null;
+    const chips = [
+      State.dateRangeDays > 0 ? `Range: last ${State.dateRangeDays}d` : 'Range: all history',
+      `Runs: ${runs.length}`,
+      State.filters.branch ? `Branch: ${State.filters.branch}` : 'Branch: all',
+      State.filters.env ? `Env: ${State.filters.env}` : 'Env: all',
+      State.filters.testTags.length ? `Tags: ${State.filters.testTags.join(', ')}` : 'Tags: all',
+      State.filters.userRole ? `User: ${State.filters.userRole}` : 'User: all',
+      State.filters.status ? `Status: ${State.filters.status}` : `Threshold: ${State.passThreshold}%`,
+    ];
+    const dateSpan = from && to
+      ? `${Utils.formatDateOnly(from)} to ${Utils.formatDateOnly(to)}`
+      : 'No date span available';
+    return { chips, dateSpan };
+  },
+
+  renderScopeSummary() {
+    const el = document.getElementById('report-scope-summary');
+    if (!el) return;
+    const meta = this.scopeMeta();
+    el.innerHTML = meta.chips.map(chip => `<span class="report-scope-chip">${Utils.escape(chip)}</span>`).join('');
+  },
+
   setFill(pdf, color) {
     pdf.setFillColor(...color);
   },
@@ -1911,11 +1942,12 @@ const ReportModule = {
       const pdf = this.getPdf();
       const latest = this.latestRun();
       const summary = AnalyticsModule.summarize(State.filteredRuns);
+      const scope = this.scopeMeta(State.filteredRuns);
       await this.ensureTrendChartsReady(State.filteredRuns);
       this.addCover(
         pdf,
         'Overall Automation Report',
-        'This report is designed for management and HOD review. It summarizes overall automation execution health, recent trends, risk concentration, and the latest run summary across the selected reporting scope.',
+        `This report is designed for management and HOD review. It summarizes overall automation execution health, recent trends, risk concentration, and the latest run summary across the selected reporting scope. Date span: ${scope.dateSpan}.`,
         'Automation Health Summary',
         {
           focusLabel: 'REPORT FOCUS',
@@ -1944,6 +1976,7 @@ const ReportModule = {
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(10);
       pdf.text(`Report scope: ${State.filteredRuns.length} runs across the current dashboard filters.`, 110, 38);
+      pdf.text(`Date span: ${scope.dateSpan}`, 110, 54);
       pdf.text(`Latest run: #${latest?.runNumber ?? '-'} | ${latest?.testType || 'Unknown tag'} | ${latest?.env || 'Unknown env'}`, 110, 46);
 
       this.addMetricCard(pdf, 14, 68, 42, 26, 'Release Score', summary.releaseScore, statusTone);
@@ -2087,11 +2120,12 @@ const ReportModule = {
       await this.ensureTrendChartsReady(State.filteredRuns);
       const pdf = this.getPdf();
       const decision = this.decisionMeta(latest);
+      const scope = this.scopeMeta(State.filteredRuns);
       const buildSafeLastRunReport = () => {
         this.addCover(
           pdf,
           'Last Run Approval Report',
-          'This report focuses on the latest selected run and is intended to support an explicit management go / no-go approval decision.',
+          `This report focuses on the latest selected run and is intended to support an explicit management go / no-go approval decision. Reporting date span: ${scope.dateSpan}.`,
           decision.text,
           {
             focusLabel: 'RELEASE DECISION',
@@ -2113,6 +2147,7 @@ const ReportModule = {
         pdf.setFont('helvetica', 'normal');
         pdf.setFontSize(10);
         pdf.text(`Run #${latest.runNumber} | ${latest.branch || 'Unknown branch'} | ${latest.env || 'Unknown env'} | ${latest.testType || 'Unknown tag'}`, 55, 38);
+        pdf.text(`Date span: ${scope.dateSpan}`, 55, 46);
 
         const statusColor = latest.status === 'PASS' ? this.palette.green : this.palette.red;
         this.addMetricCard(pdf, 14, 56, 42, 26, 'Status', latest.status, statusColor);
@@ -2702,6 +2737,7 @@ const App = {
     RiskModule.renderCategoryList(runs);
     VisualsModule.show(State.visualSection);
     TableModule.render();
+    ReportModule.renderScopeSummary();
     ExportImageModule.enhance();
   },
 
