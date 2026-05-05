@@ -151,7 +151,16 @@
     <div class="header-right">
       <span class="last-updated" id="last-updated">—</span>
       <!-- Filter icon (mobile) -->
-      <button class="btn btn-icon mobile-filter-btn" onclick="MobileModule.toggleFilterSheet()" title="Filters">⚙</button>
+      <button class="btn btn-icon mobile-filter-btn" onclick="MobileModule.toggleFilterSheet()" title="Filters" aria-label="Filters">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+          <line x1="3" y1="5" x2="17" y2="5"></line>
+          <circle cx="8" cy="5" r="2.2" fill="currentColor" stroke="none"></circle>
+          <line x1="3" y1="10" x2="17" y2="10"></line>
+          <circle cx="13" cy="10" r="2.2" fill="currentColor" stroke="none"></circle>
+          <line x1="3" y1="15" x2="17" y2="15"></line>
+          <circle cx="6" cy="15" r="2.2" fill="currentColor" stroke="none"></circle>
+        </svg>
+      </button>
       <button class="btn" onclick="App.exportCSV()">↓ CSV</button>
       <button class="btn btn-primary btn-icon" onclick="App.refresh()" title="Refresh">↺</button>
     </div>
